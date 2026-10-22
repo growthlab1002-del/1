@@ -1,5 +1,20 @@
 # 레퍼런스 수집기 (Aside CLI)
 
+## 로컬에서 쓰기 (추천)
+Aside가 설치된 PC에서 이 저장소 폴더로 가서:
+```bash
+node collector/server.mjs
+```
+브라우저로 **http://localhost:4321** 을 엽니다.
+1. 제품 사진·정보 입력 → **Aside로 분석하기** (1~3분) → 브리프 확인·검색어 수정
+2. Step 3에서 사이트를 고르고 **Aside로 수집 시작** → 찾은 레퍼런스가 보드에 바로 쌓입니다
+- 데이터는 저장소의 `data/` 폴더(`refs.json`, `briefs.json`, `assets/`)에 저장됩니다. 다른 위치는 `AD_BOARD_DATA=/경로`.
+- 사진 분석: Aside에게 사진 파일 경로를 주고 열어 보라고 지시합니다. Aside가 로컬 파일을 못 열면 입력한 정보만으로 분석합니다.
+- Aside 없이 화면만 확인: `node collector/server.mjs --mock`
+- 서버는 이 PC(127.0.0.1)에서만 접속되고, 다른 웹사이트에서 오는 요청은 막습니다.
+
+아래는 서버 없이 명령줄로만 수집하는 방법입니다 (claude.ai 버전 보드와 함께 쓸 때).
+
 대시보드에서 만든 **제품 브리프**를 받아, Aside 브라우저 에이전트로 아래 사이트를 검색해 레퍼런스를 모읍니다.
 
 | 소스 | 용도 |
@@ -33,7 +48,7 @@
 ```
 
 ## Aside 명령 맞추기
-기본값은 `aside exec {prompt}` 입니다. 설치된 Aside 버전의 실제 명령은 먼저 확인하세요:
+서버와 명령줄 수집기 모두 기본값은 `aside exec {prompt}` 입니다 (서버도 `--aside-cmd`, `ASIDE_CMD` 사용 가능). 설치된 Aside 버전의 실제 명령은 먼저 확인하세요:
 ```bash
 aside --help
 ```

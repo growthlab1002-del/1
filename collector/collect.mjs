@@ -5,6 +5,7 @@
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import path from "node:path";
 import { SOURCES, buildPrompt } from "./sources.mjs";
 
 function parseArgs(argv) {
@@ -43,7 +44,7 @@ function commandFor(template, prompt) {
   return parts;
 }
 
-function runAside(template, prompt, timeoutSec) {
+export function runAside(template, prompt, timeoutSec) {
   const [cmd, ...args] = commandFor(template, prompt);
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
@@ -58,6 +59,19 @@ function runAside(template, prompt, timeoutSec) {
       else resolve(out);
     });
   });
+}
+
+// 출력에서 JSON 객체를 찾아냅니다 (제품 분석 결과용).
+export function extractObject(text) {
+  const tries = [];
+  for (const m of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)) tries.push(m[1]);
+  tries.push(text);
+  const s = text.indexOf("{"), e = text.lastIndexOf("}");
+  if (s >= 0 && e > s) tries.push(text.slice(s, e + 1));
+  for (const t of tries) {
+    try { const v = JSON.parse(t.trim()); if (v && typeof v === "object" && !Array.isArray(v)) return v; } catch {}
+  }
+  return null;
 }
 
 // 출력에서 JSON 배열을 찾아냅니다: ```json 블록 → 전체 → 첫 '[' ~ 마지막 ']' 순서.
@@ -113,7 +127,7 @@ export function normalize(raw, { sourceKey, query, brief }) {
   };
 }
 
-function mockOutput(sourceKey, query, limit) {
+export function mockOutput(sourceKey, query, limit) {
   const s = SOURCES[sourceKey];
   const items = Array.from({ length: Math.min(limit, 3) }, (_, i) => ({
     title: `${query} 샘플 ${i + 1}`,
@@ -128,49 +142,58 @@ function mockOutput(sourceKey, query, limit) {
   return "작업을 완료했습니다.\n```json\n" + JSON.stringify([...items, items[0]], null, 2) + "\n```";
 }
 
+export const DEFAULT_ASIDE_CMD = "aside exec {prompt}";
+
+// 브리프의 소스별 검색어마다 Aside를 실행해 새 레퍼런스를 모읍니다.
+// seen: 이미 있는 URL 집합(중복 제외), onItems(새 항목들): 검색어 하나가 끝날 때마다 호출, log(문자열): 진행 상황
+export async function collect({ brief, sources, limit = 8, queries = 2, template = DEFAULT_ASIDE_CMD, timeout = 300, mock = false,
+  seen = new Set(), onItems = async () => {}, log = () => {}, rawDir = "." }) {
+  const keys = (sources?.length ? sources : Object.keys(SOURCES)).filter((k) => {
+    if (!SOURCES[k]) { log(`! 모르는 소스 건너뜀: ${k}`); return false; }
+    return true;
+  });
+  let added = 0;
+  for (const key of keys) {
+    const qs = (brief.queries?.[key] || []).filter(Boolean).slice(0, queries);
+    if (!qs.length) { log(`! ${key}: 브리프에 검색어가 없어 건너뜀`); continue; }
+    for (const q of qs) {
+      const head = `→ ${SOURCES[key].platform} "${q}" … `;
+      let out;
+      try {
+        out = mock ? mockOutput(key, q, limit) : await runAside(template, buildPrompt(key, q, brief, limit), timeout);
+      } catch (e) { log(head + `실패: ${e.message}`); continue; }
+      const arr = extractArray(out);
+      if (!arr) {
+        const f = path.join(rawDir, `raw-${key}-${Date.now()}.txt`);
+        await writeFile(f, out);
+        log(head + `JSON을 찾지 못해 원문을 ${f}에 저장`);
+        continue;
+      }
+      const fresh = [];
+      for (const raw of arr) {
+        const r = raw && typeof raw === "object" ? normalize(raw, { sourceKey: key, query: q, brief }) : null;
+        if (!r || seen.has(r.url)) continue;
+        seen.add(r.url); fresh.push(r);
+      }
+      added += fresh.length;
+      await onItems(fresh);
+      log(head + `${fresh.length}개`);
+    }
+  }
+  return added;
+}
+
 async function main() {
   const a = parseArgs(process.argv.slice(2));
   if (a.help || !a.brief) { console.log(HELP); process.exit(a.help ? 0 : 1); }
   const brief = JSON.parse(await readFile(a.brief, "utf8"));
-  const template = a.asideCmd || process.env.ASIDE_CMD || "aside exec {prompt}";
-  const keys = (a.sources || Object.keys(SOURCES)).filter((k) => {
-    if (!SOURCES[k]) { console.warn(`! 모르는 소스 건너뜀: ${k}`); return false; }
-    return true;
-  });
+  const template = a.asideCmd || process.env.ASIDE_CMD || DEFAULT_ASIDE_CMD;
 
-  let existing = [];
-  try { existing = JSON.parse(await readFile(a.out, "utf8")); if (!Array.isArray(existing)) existing = []; } catch {}
-  const seen = new Set(existing.map((r) => r.url));
-  const results = [...existing];
-  let added = 0;
-
-  for (const key of keys) {
-    const queries = (brief.queries?.[key] || []).filter(Boolean).slice(0, a.queries);
-    if (!queries.length) { console.warn(`! ${key}: 브리프에 검색어가 없어 건너뜀`); continue; }
-    for (const q of queries) {
-      process.stdout.write(`→ ${SOURCES[key].platform} "${q}" … `);
-      let out;
-      try {
-        out = a.mock ? mockOutput(key, q, a.limit) : await runAside(template, buildPrompt(key, q, brief, a.limit), a.timeout);
-      } catch (e) { console.log(`실패: ${e.message}`); continue; }
-      const arr = extractArray(out);
-      if (!arr) {
-        const f = `raw-${key}-${Date.now()}.txt`;
-        await writeFile(f, out);
-        console.log(`JSON을 찾지 못해 원문을 ${f}에 저장`);
-        continue;
-      }
-      let n = 0;
-      for (const raw of arr) {
-        const r = raw && typeof raw === "object" ? normalize(raw, { sourceKey: key, query: q, brief }) : null;
-        if (!r || seen.has(r.url)) continue;
-        seen.add(r.url); results.push(r); n++;
-      }
-      added += n;
-      console.log(`${n}개`);
-      await writeFile(a.out, JSON.stringify(results, null, 2));
-    }
-  }
+  let results = [];
+  try { results = JSON.parse(await readFile(a.out, "utf8")); if (!Array.isArray(results)) results = []; } catch {}
+  const added = await collect({ brief, sources: a.sources, limit: a.limit, queries: a.queries, template, timeout: a.timeout, mock: a.mock,
+    seen: new Set(results.map((r) => r.url)), log: (m) => console.log(m),
+    onItems: async (items) => { results.push(...items); await writeFile(a.out, JSON.stringify(results, null, 2)); } });
   await writeFile(a.out, JSON.stringify(results, null, 2));
   console.log(`\n완료: 새 레퍼런스 ${added}개 (전체 ${results.length}개) → ${a.out}\n대시보드에서 "수집 결과 가져오기"로 이 파일을 올리세요.`);
 }

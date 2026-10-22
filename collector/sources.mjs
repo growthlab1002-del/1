@@ -67,3 +67,42 @@ export function buildPrompt(sourceKey, query, brief, limit) {
     isImage ? IMAGE_SCHEMA : VIDEO_SCHEMA,
   ].join("\n");
 }
+
+// 로컬 서버의 "Aside로 분석하기"에서 쓰는 제품 분석 지시문. 결과 형식은 대시보드의 cleanBrief()가 받는 모양과 같습니다.
+export function analysisPrompt(product, photoPath) {
+  const p = product || {};
+  return [
+    `당신은 AI로 제품 광고(AI 생성 이미지·영상)를 만드는 팀의 크리에이티브 디렉터입니다.`,
+    photoPath
+      ? `광고할 제품 사진이 이 컴퓨터의 파일로 있습니다: ${photoPath}\n브라우저에서 file:// 주소로 이 파일을 열어 제품 종류, 용기·소재, 색, 질감, 브랜드 표기를 확인하세요. 파일을 열 수 없으면 아래 정보만으로 진행하세요.`
+      : ``,
+    `제품 정보:`,
+    `- 제품명: ${p.name || "(사진 참고)"}`,
+    `- 설명: ${p.description || "-"}`,
+    `- 타깃: ${p.target || "-"}`,
+    `- 가격대·포지셔닝: ${p.price || "-"}`,
+    ``,
+    `필요하면 웹에서 이 분야의 유사 브랜드와 광고를 잠깐 찾아봐도 됩니다(5분 이내).`,
+    `이 제품의 광고 레퍼런스를 찾기 위한 브리프를 만드세요. 검색어는 실제로 그 사이트에서 결과가 잘 나오는 짧은 표현으로 쓰고,`,
+    `Pinterest는 제품 사진 연출(구도·조명·배경·소품) 위주, 영상 소스는 같은 분야의 광고 영상이 나오도록 쓰세요.`,
+    `TVCF는 한국어, 나머지는 영어로 쓰세요. 경쟁·유사 브랜드 이름을 넣은 검색어도 섞으세요.`,
+    ``,
+    `다른 말 없이 이 JSON 객체만 출력하세요:`,
+    `{"category": "대분류(예: 뷰티)", "subcategory": "소분류(예: 스킨케어 세럼)", "keyVisual": "제품 외형 한두 문장", "mood": ["무드 3~5개"],`,
+    ` "targetAudience": "타깃 한 줄", "adAngles": ["광고 앵글 4~6개"], "aiAdIdeas": ["AI로 만들 컷 아이디어 3~5개, 장면·조명·카메라까지 구체적으로"],`,
+    ` "competitorBrands": ["유사 브랜드 3~5개"],`,
+    ` "queries": {"pinterest": ["3~4개"], "tvcf": ["3개"], "sourcecreative": ["2개"], "frameset": ["2개"], "youtube": ["3개"], "vimeo": ["2개"]}}`,
+  ].filter((l) => l !== ``).join("\n");
+}
+
+// --mock 모드에서 Aside 대신 돌려줄 분석 결과
+export function mockAnalysis(product) {
+  const n = product?.name || "product";
+  return {
+    category: "뷰티", subcategory: "스킨케어", keyVisual: `${n} — 가짜 분석 결과(--mock)`, mood: ["clean", "fresh"],
+    targetAudience: product?.target || "20~30대", adAngles: ["성분 클로즈업", "텍스처 시연"], aiAdIdeas: ["물방울이 맺힌 제품 위로 역광"],
+    competitorBrands: ["Sample Brand"],
+    queries: { pinterest: [`${n} product photography`], tvcf: [`${n} 광고`], sourcecreative: [`${n} commercial`],
+      frameset: [`${n} product shot`], youtube: [`${n} commercial`], vimeo: [`${n} commercial`] },
+  };
+}

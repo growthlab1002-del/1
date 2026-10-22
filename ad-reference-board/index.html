@@ -172,6 +172,8 @@ dialog::backdrop { background: var(--scrim); }
 .rel { font-family: var(--font-mono); font-size: 11px; letter-spacing: .04em; background: var(--ink); color: var(--surface); padding: 3px 7px; border-radius: 4px; }
 .struct { margin: 0; padding-left: 16px; font-size: 13px; color: var(--ink-muted); display: grid; gap: 2px; }
 .cta { font-size: 13px; color: var(--coral-text); }
+.joblog { margin: 0; max-height: 220px; overflow: auto; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; background: var(--ink); color: var(--surface); border-radius: var(--r-sm); padding: 10px 12px; white-space: pre-wrap; word-break: break-all; }
+.bbox > .btn { justify-self: start; }
 @media (max-width: 520px) { .finder { padding: 18px 16px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -179,7 +181,7 @@ dialog::backdrop { background: var(--scrim); }
 <div class="wrap">
   <header class="top">
     <div>
-      <div class="label">GROWTHLAB — Ad Reference Library</div>
+      <div class="label">GROWTHLAB — Ad Reference Library <span class="rel" id="modeLabel" hidden></span></div>
       <h1>광고 레퍼런스 보드</h1>
       <p>제품 사진·정보를 넣으면 분야에 맞는 광고 이미지(Pinterest)와 영상 구조 레퍼런스(TVCF·Source Creative·Frameset·YouTube·Vimeo)를 찾아 모읍니다.</p>
     </div>
@@ -677,23 +679,32 @@ $("analyzeBtn").addEventListener("click", async () => {
   if (state.analyzing) return;
   const p = productInput();
   if (!p.name && !state.productFile) { $("pErr").textContent = "제품명이나 제품 사진 중 하나는 넣어 주세요."; return; }
-  const withPhoto = !!(state.productFile && state.sampleImages);
+  const withPhoto = !!(state.productFile && (state.local || state.sampleImages));
   const ctl = new AbortController(); state.analyzing = ctl;
   $("pErr").textContent = ""; $("analyzeBtn").disabled = true; $("stopBtn").hidden = false;
-  $("thinking").textContent = withPhoto ? "사진과 정보를 분석하는 중… 보통 30초~1분 걸립니다" : "제품 정보를 분석하는 중… 보통 30초 안팎 걸립니다";
+  $("thinking").textContent = state.local ? "Aside가 제품을 분석하는 중… 보통 1~3분 걸립니다"
+    : withPhoto ? "사진과 정보를 분석하는 중… 보통 30초~1분 걸립니다" : "제품 정보를 분석하는 중… 보통 30초 안팎 걸립니다";
   try {
-    const opts = { signal: ctl.signal, modelTier: "default" };
-    if (withPhoto) opts.images = [state.productFile];
-    const raw = await state.sample.json(briefPrompt(p, withPhoto), opts);
+    let raw, photoAssetId = null;
+    if (state.local) {
+      if (state.productFile) { photoAssetId = (await state.assets.upload(state.productFile)).id; state.productFile = null; }
+      raw = (await localApi("POST", "/api/analyze", { product: p, photoAssetId }, ctl.signal)).brief;
+    } else {
+      const opts = { signal: ctl.signal, modelTier: "default" };
+      if (withPhoto) opts.images = [state.productFile];
+      raw = await state.sample.json(briefPrompt(p, withPhoto), opts);
+    }
     state.brief = cleanBrief(raw, p);
+    if (photoAssetId) state.brief.photoAssetId = photoAssetId;
     if (!p.name && state.brief.subcategory) state.brief.product.name = state.brief.subcategory;
     $("thinking").textContent = "브리프를 만들었습니다. 검색어를 다듬고 저장하세요.";
     renderBrief();
   } catch (e) {
     $("thinking").textContent = "";
     const c = e?.code;
-    if (c === "cancelled") return;
-    if (c === "not_granted") { $("analyzeBtn").hidden = true; $("pErr").textContent = "Claude 사용이 허용되지 않았습니다. \"직접 검색어 만들기\"로 진행해 주세요."; }
+    if (c === "cancelled" || e?.name === "AbortError") return;
+    if (c === "aside_failed" || c === "no_json") $("pErr").textContent = "Aside 분석이 실패했습니다: " + e.message + " — 다시 시도하거나 직접 검색어를 만들어 주세요.";
+    else if (c === "not_granted") { $("analyzeBtn").hidden = true; $("pErr").textContent = "Claude 사용이 허용되지 않았습니다. \"직접 검색어 만들기\"로 진행해 주세요."; }
     else if (c === "rate_limited") $("pErr").textContent = "요청이 많습니다. 잠시 후 다시 눌러 주세요.";
     else if (c === "image_rejected" || c === "images_unavailable") $("pErr").textContent = "사진을 분석에 쓸 수 없습니다. 사진을 빼거나 다른 사진으로 다시 시도해 주세요.";
     else $("pErr").textContent = "분석하지 못했습니다" + (c ? ` (${c})` : "") + ". 다시 시도하거나 직접 검색어를 만들어 주세요.";
@@ -769,6 +780,7 @@ function renderBrief() {
   root.appendChild(qg);
 
   const run = el("div", "bbox"); run.append(el("span", "label", "Step 3 — Aside로 수집"));
+  if (state.local) { root.appendChild(run); renderLocalRun(run, b); return; }
   const ol = el("ol", "steps");
   ol.append(el("li", null, "브리프 JSON을 내려받습니다."), el("li", null, "이 저장소 폴더에서 Aside가 설치된 PC의 터미널로 아래 명령을 실행합니다."),
     el("li", null, "만들어진 refs.json을 위쪽 \"수집 결과 가져오기\"로 올립니다."));
@@ -782,7 +794,7 @@ function renderBrief() {
 }
 
 async function saveBrief(btn) {
-  readBriefEdits(); const b = state.brief; if (!b || !state.db) return;
+  readBriefEdits(); const b = state.brief; if (!b || !state.db) return false;
   btn.disabled = true; btn.textContent = "저장 중…";
   try {
     if (state.productFile && state.assets && !b.photoAssetId) { const r = await state.assets.upload(state.productFile); b.photoAssetId = r.id; }
@@ -790,8 +802,8 @@ async function saveBrief(btn) {
     const { id, ...body } = b;
     await ref.set({ ...body, createdAt: b.createdAt || Date.now(), updatedAt: Date.now(), addedBy: b.addedBy || state.uid || null });
     b.id = ref.id; b.createdAt = b.createdAt || Date.now(); state.productFile = null;
-    renderBrief(); toast("브리프를 저장했습니다");
-  } catch (e) { toast("저장하지 못했습니다" + (e?.code ? ` (${e.code})` : "")); btn.disabled = false; btn.textContent = "브리프 저장"; }
+    renderBrief(); toast("브리프를 저장했습니다"); return true;
+  } catch (e) { toast("저장하지 못했습니다" + (e?.code ? ` (${e.code})` : "")); btn.disabled = false; btn.textContent = "브리프 저장"; return false; }
 }
 async function downloadBrief() {
   readBriefEdits(); const b = state.brief; if (!b) return;
@@ -853,6 +865,78 @@ $("importFile").addEventListener("change", async (e) => {
   const bid = rows[0].briefId; if (bid && state.briefs.some(b => b.id === bid)) { state.f.brief = bid; $("fBrief").value = bid; render(); }
 });
 
+/* ---------- local mode: node collector/server.mjs ---------- */
+async function localApi(method, url, body, signal) {
+  const init = { method, headers: {}, signal };
+  if (body instanceof Blob) { init.body = body; init.headers["Content-Type"] = body.type; }
+  else if (body !== undefined) { init.body = JSON.stringify(body); init.headers["Content-Type"] = "application/json"; }
+  const r = await fetch(url, init), j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.message || j.error || String(r.status)), { code: j.error || "unavailable" });
+  return j;
+}
+function localAdapters() {
+  const subs = {};
+  const hex = () => [...crypto.getRandomValues(new Uint8Array(10))].map(x => x.toString(16).padStart(2, "0")).join("");
+  async function refresh(c, force) {
+    const s = subs[c]; if (!s) return;
+    const j = await localApi("GET", `/api/${c}` + (force ? "" : `?since=${s.rev}`));
+    if (j.unchanged) return;
+    s.rev = j.rev;
+    const snap = { docs: j.docs.map(({ id, ...v }) => ({ id, data: () => v })) };
+    for (const f of s.cbs) f(snap);
+  }
+  // 수집 중에 서버가 쓰는 레퍼런스도 보이도록 2초마다 변경 여부를 확인합니다.
+  setInterval(() => { if (!document.hidden) for (const c in subs) refresh(c).catch(() => {}); }, 2000);
+  const db = { collection: (c) => ({
+    onSnapshot(cb, err) { (subs[c] ||= { cbs: [], rev: 0 }).cbs.push(cb); refresh(c, true).catch(e => err?.(e)); return () => {}; },
+    doc(id) { id = id || hex(); return { id,
+      set: async (v) => { await localApi("PUT", `/api/${c}/${id}`, v); await refresh(c, true); },
+      delete: async () => { await localApi("DELETE", `/api/${c}/${id}`); await refresh(c, true); } }; } }) };
+  const assets = { upload: (blob) => localApi("POST", "/api/assets", blob), delete: (id) => localApi("DELETE", "/api/assets/" + encodeURIComponent(id)) };
+  const downloads = { save: async ({ filename, data }) => {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(data); a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000); } };
+  return { db, assets, downloads };
+}
+
+function renderLocalRun(box, b) {
+  const picks = el("div", "chips"); picks.style.gap = "8px 14px";
+  for (const [k, name] of SOURCES) {
+    const l = el("label"); l.style.display = "inline-flex"; l.style.gap = "6px"; l.style.alignItems = "center"; l.style.fontSize = "14px";
+    const c = document.createElement("input"); c.type = "checkbox"; c.value = k; c.checked = (b.queries[k] || []).length > 0; c.dataset.src = "1";
+    l.append(c, document.createTextNode(name)); picks.appendChild(l);
+  }
+  const go = el("button", "btn primary", "Aside로 수집 시작"); go.type = "button";
+  const job = state.job && state.job.briefId === b.id ? state.job : null;
+  go.disabled = job?.status === "running";
+  const log = el("pre", "joblog"); log.id = "jobLog"; log.hidden = !job; log.textContent = job ? job.log.join("\n") : "";
+  go.addEventListener("click", async () => {
+    readBriefEdits();
+    const sources = [...box.querySelectorAll("input[data-src]:checked")].map(x => x.value);
+    if (!sources.length) { toast("소스를 하나 이상 고르세요"); return; }
+    go.disabled = true;
+    // 검색어 수정 내용을 수집기에 넘기려면 먼저 저장합니다.
+    if (!(await saveBrief(el("button")))) { go.disabled = false; return; }
+    try {
+      const { jobId } = await localApi("POST", "/api/collect", { briefId: state.brief.id, sources });
+      state.job = { id: jobId, briefId: state.brief.id, status: "running", log: ["수집을 시작했습니다. 사이트마다 1~3분 걸립니다."] };
+      state.f.brief = state.brief.id; $("fBrief").value = state.brief.id;
+      renderBrief(); pollJob();
+    } catch (e) { go.disabled = false; toast(e.code === "already_running" ? "이 제품은 이미 수집 중입니다" : "수집을 시작하지 못했습니다: " + e.message); }
+  });
+  box.append(el("p", "brand", "고른 사이트마다 브리프의 검색어(소스당 앞의 2개)로 Aside가 검색하고, 찾은 레퍼런스가 아래 보드에 바로 쌓입니다."), picks, go, log);
+}
+async function pollJob() {
+  const job = state.job; if (!job || job.status !== "running") return;
+  try {
+    const j = await localApi("GET", "/api/jobs/" + job.id);
+    Object.assign(job, { status: j.status, log: j.log, added: j.added });
+  } catch { job.status = "error"; job.log.push("서버와 연결이 끊겼습니다."); }
+  const log = $("jobLog"); if (log) { log.hidden = false; log.textContent = job.log.join("\n"); log.scrollTop = log.scrollHeight; }
+  if (job.status === "running") setTimeout(pollJob, 2000);
+  else { toast(job.status === "done" ? `수집 완료: 새 레퍼런스 ${job.added}개` : "수집 중 오류가 났습니다"); if (state.brief?.id === job.briefId) renderBrief(); }
+}
+
 /* ---------- CSV ---------- */
 $("exportBtn").addEventListener("click", async () => {
   const cols = [["title", "제목"], ["brand", "브랜드"], ["industry", "업종"], ["platform", "매체"], ["format", "포맷"], ["ratio", "비율"], ["status", "상태"], ["relevance", "관련도"], ["hook", "훅"], ["scenes", "씬 구성"], ["cta", "CTA"], ["duration", "길이"], ["note", "메모"], ["tags", "태그"], ["source", "소스"], ["query", "검색어"], ["url", "링크"], ["createdAt", "추가일"]];
@@ -866,7 +950,13 @@ $("exportBtn").addEventListener("click", async () => {
 /* ---------- boot ---------- */
 renderBriefList(); render();
 (async () => {
-  const [db, user, assets, downloads, sample] = await Promise.all(["db", "user", "assets", "downloads", "sample"].map(n => window.claude?.use ? window.claude.use(n).catch(() => null) : Promise.resolve(null)));
+  let [db, user, assets, downloads, sample] = await Promise.all(["db", "user", "assets", "downloads", "sample"].map(n => window.claude?.use ? window.claude.use(n).catch(() => null) : Promise.resolve(null)));
+  if (!window.claude && /^https?:$/.test(location.protocol)) {
+    try { const ping = await localApi("GET", "/api/ping"); if (ping.local) { state.local = true; ({ db, assets, downloads } = localAdapters());
+      $("modeLabel").textContent = ping.mock ? "Local · mock" : "Local"; $("modeLabel").hidden = false;
+      $("analyzeBtn").textContent = "Aside로 분석하기"; $("analyzeBtn").hidden = false;
+      $("finderTitle").nextElementSibling.textContent = "제품 사진과 정보를 넣으면 Aside가 분야·무드·광고 앵글을 정리하고 소스별 검색어를 만듭니다. 저장한 뒤 바로 수집을 시작할 수 있습니다."; } } catch {}
+  }
   state.db = db; state.user = user; state.assets = assets; state.downloads = downloads; state.sample = sample;
   $("exportBtn").hidden = !downloads;
   if (sample) {
@@ -879,7 +969,7 @@ renderBriefList(); render();
     try { state.uid = await user.id(); } catch {}
     try { const w = await user.can("data.write"); if (w === false) state.canWrite = false; } catch {}
   }
-  if (!db) { state.loaded = true; state.canWrite = false; $("emptyTitle").textContent = "저장소에 연결할 수 없습니다"; $("emptyText").textContent = "로그인한 상태에서 claude.ai로 이 페이지를 열면 레퍼런스를 불러오고 추가할 수 있습니다."; $("addBtn").hidden = true; render(); return; }
+  if (!db) { state.loaded = true; state.canWrite = false; $("emptyTitle").textContent = "저장소에 연결할 수 없습니다"; $("emptyText").textContent = "claude.ai에서 열거나, 이 PC에서 node collector/server.mjs 를 실행한 뒤 http://localhost:4321 로 열면 레퍼런스를 불러오고 추가할 수 있습니다."; $("addBtn").hidden = true; render(); return; }
   $("addBtn").hidden = !state.canWrite; $("importBtn").hidden = !state.canWrite;
   db.collection("briefs").onSnapshot(snap => {
     state.briefs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
