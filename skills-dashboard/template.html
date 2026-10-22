@@ -755,7 +755,7 @@ function instruction(i, budget) {
   const parts = [];
   parts.push('너는 아래 [스킬] 문서를 작업 설명서로 삼아 일하는 제작 파트너다. 스킬 문서의 절차·질문·멈추는 곳·금지 사항을 그대로 따른다. 답은 한국어로, 쉽게 풀어서, 제목·짧은 줄·표로 나눠 쓴다.');
   if (LOCAL) parts.push('\n## 실행 환경 (꼭 지킬 것)\n이 대화는 사용자 컴퓨터의 Claude Code 에서 돌아간다. 지금 작업 폴더가 이 프로젝트 폴더다. 파일 읽기·쓰기(Read·Write·Edit)와 python3 실행을 할 수 있다. 웹 검색과 생성 도구·노션 같은 연결 호출은 하지 않는다.\n'
-    + '- 스킬의 scripts/ 와 references/ 는 `' + LOCAL.skills + LOCAL.sep + st.skill + '` 폴더에 있다. 스킬이 스크립트로 계산·검산·파일 생성을 하라고 하면 그대로 실행한다. 파이썬 라이브러리(openpyxl·python-pptx·Pillow)가 없으면 pip install 을 한 번 시도하고, 그래도 안 되면 표로 대신하고 그 사실을 적는다.\n'
+    + '- 스킬의 scripts/ 와 references/ 는 `' + LOCAL.skills + LOCAL.sep + st.skill + '` 폴더에 있다. 스킬이 스크립트로 계산·검산·파일 생성을 하라고 하면 그대로 실행한다(python3 가 없으면 python 또는 py 로). 파이썬 라이브러리(openpyxl·python-pptx·Pillow)가 없으면 pip install 을 한 번 시도하고, 그래도 안 되면 표로 대신하고 그 사실을 적는다.\n'
     + '- 스킬이 만들라는 파일(.md·.csv·.xlsx·.pptx 등)은 outputs/ 폴더에 만들고, 답에 파일 이름과 핵심 내용을 함께 적는다.\n'
     + '- 영상 파일은 다루지 않는다(ffmpeg 실행 안 함). 자막(SRT)·캡처·설명으로 진행한다.\n'
     + '- 이미지·영상 생성은 직접 하지 않는다. 대시보드 생성 패널이 한다(아래 참고). 생성 도구를 쓰라는 단계는 붙여 쓸 프롬프트까지만 낸다.\n'

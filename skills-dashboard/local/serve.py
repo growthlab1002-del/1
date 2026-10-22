@@ -30,7 +30,7 @@ import build  # noqa: E402  (skills-dashboard/build.py)
 
 TIER_MODEL = {'quick': 'haiku', 'default': 'sonnet', 'complex': 'opus'}
 STEP_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash']
-STEP_ALLOWED = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash(python3:*)', 'Bash(python:*)',
+STEP_ALLOWED = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash(python3:*)', 'Bash(python:*)', 'Bash(py:*)',
                 'Bash(pip install:*)', 'Bash(pip3 install:*)', 'Bash(ls:*)', 'Bash(mkdir:*)']
 SEG = re.compile(r'^[A-Za-z0-9_-]{1,80}$')
 PING_EVERY = 2.0
@@ -41,7 +41,7 @@ class App:
         self.args = args
         self.home = os.path.abspath(os.path.expanduser(args.home))
         self.token = secrets.token_urlsafe(24)
-        self.claude = args.claude or shutil.which('claude')
+        self.claude = args.claude or find_claude()
         self.servers = {'매그니픽': args.magnific_name, '힉스필드': args.higgsfield_name}
         files = build.read_source(args.pack)
         html, skills, _ = build.build_html(args.pack, files)
@@ -419,9 +419,49 @@ def activity_label(name):
             'Bash': '스크립트를 실행하는 중', 'Glob': '파일을 찾는 중', 'Grep': '내용을 찾는 중'}.get(name, '작업하는 중')
 
 
+def find_claude():
+    found = shutil.which('claude')
+    if found or os.name != 'nt':
+        return found
+    # Windows: PATH 에 안 잡혀 있을 때 흔한 설치 위치
+    for p in (os.path.expandvars(r'%USERPROFILE%\.local\bin\claude.exe'),
+              os.path.expandvars(r'%APPDATA%\npm\claude.cmd'),
+              os.path.expandvars(r'%LOCALAPPDATA%\Programs\claude\claude.exe')):
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def find_pack():
+    """--pack 을 안 줬을 때: 흔한 다운로드 폴더에서 가장 최근 스킬 팩 zip 을 찾고, 없으면 물어봄."""
+    import glob
+    home = os.path.expanduser('~')
+    dirs = [os.getcwd(), os.path.join(home, 'Downloads'), os.path.join(home, '다운로드'), home]
+    if os.name == 'nt':
+        dirs += [r'D:\크롬다운로드', r'D:\Downloads', r'D:\다운로드']
+    found = []
+    for d in dirs:
+        for pat in ('wadiz-skills-pack*.zip', '*wadiz*skills*.zip'):
+            found += glob.glob(os.path.join(d, pat))
+    if found:
+        pick = max(set(found), key=os.path.getmtime)
+        print(f'스킬 팩: {pick}', flush=True)
+        return pick
+    try:
+        return input('스킬 팩 zip 경로를 붙여 넣고 Enter: ').strip().strip('"') or None
+    except EOFError:
+        return None
+
+
 def main():
+    # Windows 콘솔(cp949)에서도 한글·기호 출력 때문에 멈추지 않게
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
     ap = argparse.ArgumentParser(description='스킬 워크플로우 보드 (내 컴퓨터 + Claude Code)')
-    ap.add_argument('--pack', required=True, help='스킬 팩 zip 또는 풀린 폴더')
+    ap.add_argument('--pack', help='스킬 팩 zip 또는 풀린 폴더 (생략하면 다운로드 폴더에서 찾음)')
     ap.add_argument('--home', default='~/SkillBoard', help='프로젝트·결과를 저장할 폴더 (기본 ~/SkillBoard)')
     ap.add_argument('--port', type=int, default=8787)
     ap.add_argument('--no-browser', action='store_true', help='브라우저를 자동으로 열지 않음')
@@ -431,6 +471,9 @@ def main():
     ap.add_argument('--claude', help='claude 실행 파일 경로 (기본: PATH 에서 찾음)')
     ap.add_argument('--verbose', action='store_true')
     args = ap.parse_args()
+    args.pack = args.pack or find_pack()
+    if not args.pack or not os.path.exists(args.pack):
+        sys.exit(f'스킬 팩을 찾지 못했어요: {args.pack}')
 
     app = App(args)
     Handler.app = app

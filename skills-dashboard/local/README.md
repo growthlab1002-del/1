@@ -16,6 +16,25 @@ claude.ai 대시보드와 같은 화면을 내 컴퓨터에서 띄웁니다. 실
 
 두 버전의 프로젝트는 서로 이어지지 않아요.
 
+## 0. 대시보드 코드 받기 (처음 한 번)
+
+대시보드 코드는 GitHub 저장소에 있어요. 내 컴퓨터에 한 번 받아 둬야 해요.
+
+**방법 A — 내 컴퓨터의 Claude Code에 그대로 붙여 넣기**
+```
+https://github.com/growthlab1002-del/1 저장소의 claude/intelligent-johnson-9fmwww 브랜치를 C:\skillboard 에 clone 해 줘.
+```
+
+**방법 B — 터미널(PowerShell)에서 직접**
+```powershell
+git clone -b claude/intelligent-johnson-9fmwww https://github.com/growthlab1002-del/1.git C:\skillboard
+```
+
+**방법 C — git이 없을 때**
+1. GitHub 저장소 페이지에서 브랜치를 `claude/intelligent-johnson-9fmwww`로 바꿔요.
+2. **Code → Download ZIP**으로 받아요.
+3. 압축을 풀어요.
+
 ## 1. 준비 (처음 한 번)
 
 1. **Python 3.9 이상**을 설치해요. Mac은 이미 깔려 있는 경우가 많아요. 터미널에서 `python3 --version`으로 확인해요.
@@ -42,6 +61,19 @@ claude mcp add --transport http --scope user magnific <매그니픽 MCP 주소>
 
 ## 3. 실행
 
+**Windows:** 받은 폴더의 `skills-dashboard\local\run-windows.bat`을 더블클릭해요.
+스킬 팩 zip은 아래 폴더에서 자동으로 찾아요. 못 찾으면 zip 경로를 붙여 넣으라고 물어봐요.
+- 다운로드 폴더
+- `D:\크롬다운로드`
+- `D:\Downloads`
+
+터미널에서 직접 실행할 수도 있어요.
+```powershell
+cd C:\skillboard
+py skills-dashboard\local\serve.py --pack "D:\크롬다운로드\wadiz-skills-pack.zip"
+```
+
+**Mac:**
 ```bash
 python3 skills-dashboard/local/serve.py --pack ~/Downloads/wadiz-skills-pack.zip
 ```
