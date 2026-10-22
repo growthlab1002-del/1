@@ -52,10 +52,11 @@ git clone -b claude/intelligent-johnson-9fmwww https://github.com/growthlab1002-
 
 ```bash
 claude mcp add --transport http --scope user higgsfield https://mcp.higgsfield.ai/mcp
-claude mcp add --transport http --scope user magnific <매그니픽 MCP 주소>
+claude mcp add --transport http --scope user magnific https://mcp.magnific.com
 ```
 
-- **매그니픽 주소 찾기:** claude.ai **설정 → 커넥터 → 매그니픽**에서 등록하신 주소를 그대로 복사해요. 공개 문서에서는 주소를 찾지 못했어요.
+- **주소 출처:** 매그니픽 주소는 매그니픽 공식 문서(https://docs.magnific.com/modelcontextprotocol)에 나와 있어요. 매그니픽 계정으로 로그인하는 방식(OAuth)이에요.
+- **매그니픽 로그인이 실패하면:** `claude` 를 최신 버전으로 업데이트한 뒤 다시 해 봐요. 그래도 안 되면 그 오류 화면을 알려 주세요.
 - **로그인:** `claude`를 실행하고 `/mcp`를 입력해요. `higgsfield`와 `magnific`을 하나씩 골라 로그인해요.
 - **이름을 다르게 등록했다면:** 실행할 때 `--magnific-name 이름 --higgsfield-name 이름`을 붙여요.
 
