@@ -1,0 +1,865 @@
+<title>스킬 워크플로우 보드</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@700;800&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<style>
+/* 레이아웃: 위는 파트별 스킬 지도와 흐름 카드, 프로젝트를 열면 단계 띠(파이프라인) + 대화 + 오른쪽 점검표 */
+:root {
+  --bg: #eef0f3; --surface: #ffffff; --sunk: #f5f6f8; --ink: #161a22; --muted: #5b6372; --line: #d9dde4;
+  --accent: #2c43c4; --accent-soft: #e6e9fb; --on-accent: #ffffff;
+  --ok: #17703a; --ok-soft: #e3f3e8; --warn: #9a5b00; --warn-soft: #fbf0dc; --bad: #b42318; --bad-soft: #fde8e6;
+  --p-plan: #6b46c1; --p-gen: #c2410c; --p-comp: #b0246f; --p-deck: #0e6f8a; --p-sns: #1d7a40; --p-sales: #876400;
+  --f-display: "Gothic A1", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12151b; --surface: #1a1e26; --sunk: #151920; --ink: #e8ebf1; --muted: #9aa3b2; --line: #2c323d;
+  --accent: #8b9cff; --accent-soft: #252c4d; --on-accent: #0f1220;
+  --ok: #6fd391; --ok-soft: #173023; --warn: #f0b858; --warn-soft: #33270f; --bad: #ff8f84; --bad-soft: #3a1c1a;
+  --p-plan: #a98bf0; --p-gen: #f28a55; --p-comp: #ef7ab5; --p-deck: #5cc4dc; --p-sns: #6fcf8e; --p-sales: #d9b84a;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12151b; --surface: #1a1e26; --sunk: #151920; --ink: #e8ebf1; --muted: #9aa3b2; --line: #2c323d;
+  --accent: #8b9cff; --accent-soft: #252c4d; --on-accent: #0f1220;
+  --ok: #6fd391; --ok-soft: #173023; --warn: #f0b858; --warn-soft: #33270f; --bad: #ff8f84; --bad-soft: #3a1c1a;
+  --p-plan: #a98bf0; --p-gen: #f28a55; --p-comp: #ef7ab5; --p-deck: #5cc4dc; --p-sns: #6fcf8e; --p-sales: #d9b84a;
+  color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.6 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px; }
+.wrap { max-width: 1240px; margin: 0 auto; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: 22px; font-weight: 800; }
+h2 { font-size: 17px; font-weight: 800; }
+h3 { font-size: 15px; font-weight: 700; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.mono { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.04em; }
+button, select, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 12px; }
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+button.ghost:hover:not(:disabled) { color: var(--ink); border-color: var(--line); }
+button.danger { color: var(--bad); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+select, input[type=text], textarea { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+textarea { width: 100%; resize: vertical; line-height: 1.55; }
+a { color: var(--accent); }
+
+/* 상단 */
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg);
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding-block: 14px 12px;
+  border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.brand { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.brand .mark { font-family: var(--f-mono); font-size: 11px; padding: 2px 6px; border: 1px solid var(--ink); border-radius: 4px; }
+.top nav { display: flex; gap: 6px; flex-wrap: wrap; }
+.notice { margin-bottom: 14px; padding: 10px 12px; border-radius: 8px; background: var(--warn-soft); color: var(--warn); font-size: 13px; }
+
+/* 파트 지도 */
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 26px 0 10px; }
+.parts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.part { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; border-top: 4px solid var(--pc); min-width: 0; }
+.part header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.part header h3 { color: var(--pc); }
+.skill-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; width: 100%; text-align: left; border: 0; border-radius: 6px; padding: 7px 8px; background: transparent; }
+.skill-row:hover { background: var(--sunk); }
+.skill-row .id { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.skill-row .lb { grid-column: 1 / -1; font-size: 14px; }
+.need { font-size: 11px; padding: 1px 6px; border-radius: 99px; background: var(--sunk); color: var(--muted); border: 1px solid var(--line); white-space: nowrap; }
+
+/* 흐름 카드 */
+.flows { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.flow { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.flow .chain { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 8px; border-radius: 99px; border: 1px solid var(--line); background: var(--sunk); }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--pc, var(--muted)); }
+.chain .arrow { color: var(--muted); font-size: 12px; }
+.flow footer { display: flex; justify-content: space-between; align-items: center; margin-top: auto; gap: 8px; }
+
+/* 프로젝트 목록 */
+.runs { display: grid; gap: 8px; }
+.run-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; text-align: left; width: 100%; }
+.bar { height: 6px; border-radius: 99px; background: var(--sunk); overflow: hidden; grid-column: 1 / -1; display: flex; gap: 2px; }
+.bar i { flex: 1; background: var(--line); }
+.bar i.done { background: var(--ok); } .bar i.active { background: var(--accent); } .bar i.skipped { background: var(--muted); opacity: .35; }
+.empty-state { padding: 22px; border: 1px dashed var(--line); border-radius: var(--r); color: var(--muted); text-align: center; }
+
+/* 새 프로젝트 */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; }
+.form { display: grid; gap: 16px; max-width: 860px; }
+.field { display: grid; gap: 6px; }
+.field > label, .field > .label { font-weight: 600; font-size: 14px; }
+.wf-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.wf-pick label { display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; cursor: pointer; background: var(--surface); }
+.wf-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.wf-pick label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.wf-pick label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.builder { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.builder .pool { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
+.builder .pool button { font-size: 12px; padding: 4px 9px; border-radius: 99px; display: inline-flex; gap: 6px; align-items: center; }
+.builder .pool button::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--pc); }
+.builder ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: s; }
+.builder li { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; counter-increment: s; }
+.builder li::before { content: counter(s, decimal-leading-zero); font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.builder li span { flex: 1; min-width: 0; }
+.builder li button { padding: 2px 7px; font-size: 12px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex-wrap: wrap; }
+.seg label { padding: 7px 12px; cursor: pointer; font-size: 14px; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label:has(input:checked) { background: var(--ink); color: var(--bg); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* 프로젝트 화면 */
+.run-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
+.run-head .tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pipe-wrap { overflow-x: auto; margin-bottom: 14px; padding-bottom: 4px; }
+.pipe { display: flex; gap: 6px; min-width: min-content; }
+.stage { width: 168px; flex: none; text-align: left; border: 1px solid var(--line); border-left: 4px solid var(--pc); border-radius: 8px; padding: 8px 10px; background: var(--surface); display: grid; gap: 2px; }
+.stage .n { font-family: var(--f-mono); font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+.stage .t { font-weight: 600; font-size: 14px; line-height: 1.3; }
+.stage .s { font-size: 12px; color: var(--muted); font-family: var(--f-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stage.cur { box-shadow: 0 0 0 2px var(--accent); }
+.pill { font-size: 11px; padding: 0 6px; border-radius: 99px; font-family: var(--f-body); }
+.pill.todo { background: var(--sunk); color: var(--muted); }
+.pill.active { background: var(--accent-soft); color: var(--accent); }
+.pill.done { background: var(--ok-soft); color: var(--ok); }
+.pill.skipped { background: var(--sunk); color: var(--muted); text-decoration: line-through; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+@media (max-width: 900px) { .workspace { grid-template-columns: minmax(0, 1fr); } .builder { grid-template-columns: minmax(0, 1fr); } }
+.chat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); display: flex; flex-direction: column; min-width: 0; }
+.chat-head { padding: 12px 14px; border-bottom: 1px solid var(--line); display: grid; gap: 4px; }
+.msgs { padding: 14px; display: grid; gap: 14px; min-height: 220px; }
+.msg { min-width: 0; }
+.msg .who { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: flex; gap: 8px; align-items: center; }
+.msg.user .body { background: var(--sunk); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.assistant .body { overflow-wrap: anywhere; }
+.md > *:first-child { margin-top: 0; } .md > *:last-child { margin-bottom: 0; }
+.md h1, .md h2, .md h3, .md h4 { font-family: var(--f-display); margin: 1.1em 0 .4em; font-size: 15px; }
+.md h1, .md h2 { font-size: 16px; }
+.md p, .md ul, .md ol { margin: .5em 0; }
+.md .tbl { overflow-x: auto; margin: .6em 0; }
+.md table { border-collapse: collapse; font-size: 13px; }
+.md th, .md td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+.md th { background: var(--sunk); }
+.md pre { background: var(--sunk); border: 1px solid var(--line); border-radius: 6px; padding: 10px; overflow-x: auto; font-size: 13px; white-space: pre-wrap; }
+.md code { font-family: var(--f-mono); font-size: 12.5px; }
+.md blockquote { margin: .5em 0; padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); }
+.thinking { color: var(--muted); font-size: 14px; }
+.thinking::after { content: "…"; animation: blink 1.2s steps(3) infinite; }
+@keyframes blink { 50% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .thinking::after { animation: none; } }
+.composer { border-top: 1px solid var(--line); padding: 12px 14px; display: grid; gap: 8px; }
+.attach-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.attach-list span { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--sunk); border: 1px solid var(--line); }
+.composer .row { justify-content: space-between; }
+.side { display: grid; gap: 12px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 76px); }
+.side .panel { padding: 14px; display: grid; gap: 8px; }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.checks li { display: flex; gap: 8px; }
+.checks li::before { content: "○"; color: var(--muted); }
+.checks li.y::before { content: "✓"; color: var(--ok); font-weight: 700; }
+.checks li.n::before { content: "✕"; color: var(--bad); font-weight: 700; }
+#handoff { min-height: 160px; font-size: 13px; font-family: var(--f-body); }
+.err { color: var(--bad); font-size: 13px; }
+
+/* 스킬 상세 */
+dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; background: var(--surface); color: var(--ink); width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); }
+dialog::backdrop { background: rgb(10 12 16 / .45); }
+.dlg { padding: 18px; display: grid; gap: 12px; }
+.dlg header { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.dlg details { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.dlg details pre { white-space: pre-wrap; font-size: 12.5px; max-height: 360px; overflow: auto; margin: 8px 0 0; font-family: var(--f-mono); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 14px; z-index: 20; max-width: calc(100vw - 32px); }
+</style>
+
+<script id="skills-data" type="application/json">__SKILLS_JSON__</script>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand">
+      <span class="mark">SKILLS</span>
+      <h1>스킬 워크플로우 보드</h1>
+      <span class="muted small" id="store-note"></span>
+    </div>
+    <nav>
+      <button class="ghost" id="nav-home">대시보드</button>
+      <button class="primary" id="nav-new">새 프로젝트</button>
+    </nav>
+  </div>
+  <div class="notice" id="sample-notice" hidden>이 페이지를 claude.ai 안에서 열어야 Claude가 단계를 실행해요. 지금은 각 단계의 <b>프롬프트 복사</b>로 Claude 채팅에 붙여 넣어 쓸 수 있어요.</div>
+
+  <main id="view-home"></main>
+  <main id="view-new" hidden></main>
+  <main id="view-run" hidden></main>
+</div>
+
+<dialog id="skill-dlg"><div class="dlg" id="skill-dlg-body"></div></dialog>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+'use strict';
+const DATA = JSON.parse(document.getElementById('skills-data').textContent);
+const SK = DATA.skills || {};
+const GUIDES = DATA.guides || {};
+
+/* ───────── 분류 ───────── */
+const PARTS = [
+  { id: 'plan',  name: '영상 기획',       color: '--p-plan',  note: '레퍼런스 분해, 컨셉·씬, 카메라 연출',
+    skills: ['reference-analysis', 'video-concept', 'camera-angle'] },
+  { id: 'gen',   name: '이미지·영상 생성', color: '--p-gen',   note: '배우·제품·씬 이미지와 영상 클립',
+    skills: ['contiboard', 'keyvisual', 'keyvisual-v2', 'product-image', 'image-prompt', 'image-to-video'] },
+  { id: 'comp',  name: '이미지 합성',     color: '--p-comp',  note: '사람·제품을 그대로 두고 장면만 바꾸기',
+    skills: ['composite-person', 'composite-product'] },
+  { id: 'deck',  name: '제안서',          color: '--p-deck',  note: '제안 설계서와 스토리보드 장표',
+    skills: ['proposal-deck', 'storyboard-deck'] },
+  { id: 'sns',   name: 'SNS 기획·운영',   color: '--p-sns',   note: '컨셉 → 편성 → 한 편 기획 → 채널 배포 → 성과',
+    skills: ['sns-concept', 'content-calendar', 'shortform-plan', 'channel-repurpose', 'video-to-shorts', 'sns-marketing'] },
+  { id: 'sales', name: '세일즈·고객',     color: '--p-sales', note: '견적, 문의 응대, 수주 전 과정',
+    skills: ['quote-builder', 'cs-reply', 'outsource-sales'] }
+];
+const LABEL = {
+  'reference-analysis': '레퍼런스를 훅·구조·컷·카메라로 분해', 'video-concept': '광고 영상 컨셉과 씬별 기획서',
+  'camera-angle': '앵글·무빙 고르고 영어 프롬프트로', 'contiboard': '스토리 → 스케치 콘티 → 씬 이미지',
+  'keyvisual': '가상 배우 캐스팅과 프로필 세트', 'keyvisual-v2': '구도·배경 중심 광고 대표 이미지',
+  'product-image': '가상 브랜드 제품 기획과 이미지', 'image-prompt': '나노바나나용 이미지·합성 프롬프트',
+  'image-to-video': '이미지를 영상 클립으로 (Kling·Seedance)', 'composite-person': '같은 사람으로 룩북·얼굴·옷 바꾸기',
+  'composite-product': '제품 그대로 새 장면, 라벨·로고 복원', 'proposal-deck': '자료 확인 → 기획 4칸 → 설계서 → 장표',
+  'storyboard-deck': '문구·이미지로 스토리보드 제안서', 'sns-concept': '계정 컨셉 시트 (포지셔닝·보이스·필러)',
+  'content-calendar': '4주 콘텐츠 캘린더와 개수·비율 검산', 'shortform-plan': '숏폼 한 편 (훅·초 단위 구조·CTA)',
+  'channel-repurpose': '한 콘텐츠를 채널별로 다시 쓰기', 'video-to-shorts': '긴 영상에서 숏폼 구간과 편집 지시서',
+  'sns-marketing': '계정 진단 → 성과 분석 → 경쟁 비교 → 리포트', 'quote-builder': '항목별 견적서와 수정·납기·권리 조건',
+  'cs-reply': '고객 문의 분류와 답변 초안', 'outsource-sales': '문의 접수부터 착수·계약 후 응대까지'
+};
+// 대시보드에는 생성 연결·코드 실행·영상 파일 열기가 없어서 대신 하는 일
+const NEEDS = {
+  H: ['생성 연결', 'Higgsfield 생성은 여기서 못 해요. 붙여 쓸 프롬프트까지 만들어 줘요.'],
+  C: ['계산 도구', '코드 실행이 없어 계산은 표로 직접 하고 "스크립트 검산 못 함"으로 표시해요. 파일 대신 표·마크다운으로 받아요.'],
+  F: ['영상 파일', '영상 파일은 못 열어요. 자막(SRT)·캡처 이미지·설명으로 진행해요.']
+};
+const NEED_OF = {
+  'contiboard': 'H', 'keyvisual': 'H', 'keyvisual-v2': 'H', 'product-image': 'H', 'image-to-video': 'H',
+  'composite-person': 'H', 'composite-product': 'H', 'quote-builder': 'C', 'storyboard-deck': 'C', 'proposal-deck': 'C',
+  'content-calendar': 'C', 'sns-marketing': 'C', 'outsource-sales': 'C', 'reference-analysis': 'F', 'video-to-shorts': 'F'
+};
+const PART_OF = {};
+PARTS.forEach(p => p.skills.forEach(s => { PART_OF[s] = p; }));
+// 팩에 있는데 분류에 없는 스킬은 "기타"로
+const OTHER = Object.keys(SK).filter(s => !PART_OF[s]);
+if (OTHER.length) { const p = { id: 'etc', name: '기타', color: '--muted', note: '분류 전 스킬', skills: OTHER }; PARTS.push(p); OTHER.forEach(s => { PART_OF[s] = p; }); }
+
+/* ───────── 워크플로우 (04_작업지침 기준) ───────── */
+const FLOWS = [
+  { id: 'ad', name: '광고 영상 제작', guide: 'ad', desc: '레퍼런스 → 컨셉 → 배우·제품 → 씬 이미지 → 영상 → 제안서', steps: [
+    { skill: 'reference-analysis', title: '레퍼런스 분석', optional: true, done: ['분석 정리', '가져올 점을 사용자가 확인'], out: '레퍼런스 분석 (가져올 것 · 바꿀 것 · 피할 것)' },
+    { skill: 'video-concept', title: '컨셉·씬 기획', done: ['사용자가 컨셉 안 하나를 고름', '기획서(씬 표·톤·컬러·피해야 할 것) 완성'], out: '컨셉 기획서 전체 (씬 번호 그대로)' },
+    { skill: 'keyvisual', title: '배우 캐스팅', optional: true, done: ['배우를 사용자가 확정(픽)'], out: '확정 배우 설명과 프롬프트' },
+    { skill: 'product-image', title: '제품 이미지', optional: true, done: ['제품 이미지(또는 프롬프트)를 사용자가 확정'], out: '확정 제품 설명과 프롬프트' },
+    { skill: 'contiboard', title: '씬 이미지', extra: ['image-prompt'], done: ['기획서의 씬마다 이미지 프롬프트', '씬 번호 ↔ 프롬프트 표', '사용자 확인'], out: '씬별 첫 프레임 프롬프트 표' },
+    { skill: 'image-to-video', title: '영상 클립', extra: ['camera-angle'], done: ['씬마다 영상(모션) 프롬프트', '사용자 확인'], out: '씬별 영상 프롬프트와 모델·옵션' },
+    { skill: 'proposal-deck', title: '제안서', extra: ['storyboard-deck'], done: ['설계서 사용자 확인', '장표 구성 완성'], out: '제안 설계서와 장표 구성' }
+  ] },
+  { id: 'sns', name: 'SNS 운영', guide: 'sns', desc: '계정 컨셉 → 한 달 편성 → 한 편 기획 → 채널별 배포', steps: [
+    { skill: 'sns-concept', title: '계정 컨셉', done: ['컨셉 시트를 사용자가 확정'], out: 'SNS 컨셉 시트 전체' },
+    { skill: 'content-calendar', title: '한 달 편성', done: ['캘린더 개수·비율 검산 통과', '사용자 확인'], out: '4주 캘린더 (CSV 형식 표)' },
+    { skill: 'shortform-plan', title: '한 편 기획', extra: ['reference-analysis'], done: ['기획서를 사용자가 확인'], out: '숏폼 기획서 전체' },
+    { skill: 'channel-repurpose', title: '채널별 배포', done: ['채널별 초안', '사용자 확인'], out: '채널별 재가공 패키지' }
+  ] },
+  { id: 'shorts', name: '긴 영상 재활용', guide: 'sns', desc: '긴 영상에서 숏폼 구간 고르기 → 채널별 배포', steps: [
+    { skill: 'video-to-shorts', title: '숏폼 구간 고르기', done: ['뽑을 구간을 사용자가 고름', '편집 지시서'], out: '클립 브리프와 편집 지시서' },
+    { skill: 'channel-repurpose', title: '채널별 배포', done: ['채널별 초안', '사용자 확인'], out: '채널별 재가공 패키지' }
+  ] },
+  { id: 'sales', name: '수주·고객 응대', guide: 'sales', desc: '제안서 → 견적 → 계약 후 소통', steps: [
+    { skill: 'proposal-deck', title: '제안서', extra: ['storyboard-deck'], done: ['기획 빈칸(목적·타깃·핵심 메시지·차별점) 채움', '설계서 사용자 확인'], out: '제안 설계서와 장표 흐름 (견적 장표는 비워 둠)' },
+    { skill: 'quote-builder', title: '견적', done: ['항목 표 사용자 확인', '단가 빈칸 없음', '합계를 사용자가 확인'], out: '견적 표, 조건 문구, 안별 3줄 요약' },
+    { skill: 'cs-reply', title: '계약 후 소통', done: ['정책 파일에 해당 항목 있음', '답변 초안'], out: '답변 초안 (범위 밖 요청이면 견적 단계로 되돌림)' }
+  ] },
+  { id: 'mkt', name: 'SNS 마케팅 점검', desc: '운영 중인 계정: 진단·목표 → 성과 분석 → 경쟁 비교 → 월간 리포트', steps: [
+    { skill: 'sns-marketing', stage: '1. 계정 진단·목표', title: '계정 진단·목표', done: ['타깃·운영 목적 한 줄', '점검표 작성', '목표 숫자를 사용자가 정함'], out: '목표 문서' },
+    { skill: 'sns-marketing', stage: '2. 성과 분석', title: '성과 분석', done: ['인사이트 자료 받음', '계산 결과 있음', '다음 달 반영안을 사용자가 고름'], out: '성과 분석 문서' },
+    { skill: 'sns-marketing', stage: '3. 경쟁 계정 비교', title: '경쟁 계정 비교', optional: true, done: ['옮긴 표를 사용자가 확인', '계산 결과 있음'], out: '경쟁 비교 문서' },
+    { skill: 'sns-marketing', stage: '4. 월간 리포트', title: '월간 리포트', done: ['이번 기간 성과 있음', '"이번 리포트에 없는 자료" 목록'], out: '월간 리포트 한 장' }
+  ] },
+  { id: 'out', name: '외주 세일즈', desc: '문의 접수·수주 판단 → 제안서 → 팔로업 → 견적 → 킥오프 → 계약 후 응대', steps: [
+    { skill: 'outsource-sales', stage: '0. 접수·수주 판단', title: '접수·수주 판단', done: ['브리프 추정 칸 사용자 확인', '판단표 점수 확인', '진행 여부를 사용자가 정함'], out: '고객 브리프와 판단표' },
+    { skill: 'outsource-sales', stage: '1. 제안서', title: '제안서', done: ['기획 4칸 사용자 확인', '설계서 사용자 확인', '장표 흐름'], out: '장표 흐름 (견적 장표는 견적 단계 값으로)' },
+    { skill: 'outsource-sales', stage: '1-1. 팔로업', title: '팔로업', optional: true, done: ['팔로업 초안', '결과(수주/실주/대기) 한 줄 기록'], out: '수주 기록 한 줄' },
+    { skill: 'outsource-sales', stage: '2. 견적', title: '견적', done: ['항목 표 사용자 확인', '단가 빈칸 없음', '합계 사용자 확인'], out: '견적 표, 조건 문구, 안별 3줄 요약' },
+    { skill: 'outsource-sales', stage: '3. 킥오프', title: '킥오프', done: ['확정 견적', '일정표 결과물 = 견적 항목', '수정 횟수가 견적·정책과 같음'], out: '킥오프 문서' },
+    { skill: 'outsource-sales', stage: '4. 계약 후 응대', title: '계약 후 응대', done: ['정책에 해당 항목 있음', '내부 메모 + 답변 초안'], out: '답변 초안' }
+  ] }
+].map(f => ({ ...f, steps: f.steps.filter(s => SK[s.skill]) })).filter(f => f.steps.length);
+
+const TIERS = { quick: '빠름', default: '기본', complex: '정밀' };
+const MAX_BYTES = 250000;
+
+/* ───────── 도우미 ───────── */
+const $ = (sel, el = document) => el.querySelector(sel);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+const bytes = s => new TextEncoder().encode(s).length;
+const clone = o => JSON.parse(JSON.stringify(o));
+const pc = sid => 'var(' + (PART_OF[sid]?.color || '--muted') + ')';
+const fmtDate = t => { try { return new Date(t).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
+let toastTimer;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2600); }
+function md(text) {
+  if (window.marked && window.DOMPurify) {
+    const html = DOMPurify.sanitize(marked.parse(String(text), { gfm: true, breaks: true }));
+    return html.replace(/<table>/g, '<div class="tbl"><table>').replace(/<\/table>/g, '</table></div>');
+  }
+  return '<p style="white-space:pre-wrap">' + esc(text) + '</p>';
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast('복사했어요'); }
+  catch (e) {
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (_) {}
+    ta.remove(); toast(ok ? '복사했어요' : '복사가 막혀 있어요. 내보내기를 써 주세요');
+  }
+}
+const use = name => (window.claude && typeof window.claude.use === 'function')
+  ? window.claude.use(name).catch(() => null) : Promise.resolve(null);
+
+/* ───────── 저장소: claude.ai db → 브라우저 저장 → 메모리 ───────── */
+const Store = {
+  mode: 'memory', db: null, base: '', mem: {}, chain: Promise.resolve(),
+  async init() {
+    const [db, user] = await Promise.all([use('db'), use('user')]);
+    if (db && user) {
+      try { const id = await user.id(); if (id) { this.db = db; this.base = 'data/users/' + id; this.mode = 'db'; return; } } catch (e) {}
+    }
+    try { localStorage.setItem('wsd:t', '1'); localStorage.removeItem('wsd:t'); this.mode = 'local'; } catch (e) { this.mode = 'memory'; }
+  },
+  lget(k) {
+    if (this.mode === 'local') { try { const v = localStorage.getItem('wsd:' + k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+    return this.mem[k] ?? null;
+  },
+  lset(k, v) {
+    if (this.mode === 'local') {
+      try { if (v == null) localStorage.removeItem('wsd:' + k); else localStorage.setItem('wsd:' + k, JSON.stringify(v)); return; }
+      catch (e) { toast('브라우저 저장 공간이 부족해요. 오래된 프로젝트를 지워 주세요'); }
+    }
+    if (v == null) delete this.mem[k]; else this.mem[k] = v;
+  },
+  queue(fn) { this.chain = this.chain.then(fn).catch(e => { console.error(e); toast('저장하지 못했어요'); }); return this.chain; },
+  async list() {
+    if (this.mode === 'db') { const q = await this.db.collection(this.base).get(); return q.docs.map(d => ({ ...d.data(), id: d.id })); }
+    return (this.lget('index') || []).map(id => this.lget('m:' + id)).filter(Boolean);
+  },
+  putMeta(m) {
+    const body = clone(m);
+    return this.queue(async () => {
+      if (this.mode === 'db') return this.db.collection(this.base).doc(body.id).set(body);
+      const idx = this.lget('index') || []; if (!idx.includes(body.id)) { idx.push(body.id); this.lset('index', idx); }
+      this.lset('m:' + body.id, body);
+    });
+  },
+  async getSteps(id, n) {
+    const out = Array.from({ length: n }, () => null);
+    if (this.mode === 'db') {
+      const q = await this.db.collection(this.base + '/' + id + '/steps').get();
+      q.docs.forEach(d => { const i = parseInt(d.id.slice(1), 10); if (i < n) out[i] = d.data(); });
+    } else for (let i = 0; i < n; i++) out[i] = this.lget('s:' + id + ':' + i);
+    return out.map(s => s ? clone(s) : { status: 'todo', messages: [], handoff: '' });
+  },
+  putStep(id, i, step) {
+    const body = clone(step);
+    // 문서 하나 256KB 제한: 넘으면 오래된 대화부터 덜어 냄
+    while (bytes(JSON.stringify(body)) > 230000 && body.messages.length > 2) body.messages.splice(0, 2, { role: 'user', content: '(앞 대화는 저장 용량 때문에 줄였어요)' });
+    return this.queue(async () => {
+      if (this.mode === 'db') return this.db.doc(this.base + '/' + id + '/steps/s' + pad(i)).set(body);
+      this.lset('s:' + id + ':' + i, body);
+    });
+  },
+  remove(id, n) {
+    return this.queue(async () => {
+      if (this.mode === 'db') {
+        for (let i = 0; i < n; i++) await this.db.doc(this.base + '/' + id + '/steps/s' + pad(i)).delete().catch(() => {});
+        return this.db.collection(this.base).doc(id).delete();
+      }
+      for (let i = 0; i < n; i++) this.lset('s:' + id + ':' + i, null);
+      this.lset('m:' + id, null); this.lset('index', (this.lget('index') || []).filter(x => x !== id));
+    });
+  }
+};
+
+/* ───────── 상태 ───────── */
+const S = { metas: [], run: null, steps: [], cur: 0, busy: false, ctl: null, autoRunning: false, sample: null, imgLimits: null, pending: { images: [], texts: [] }, live: '' };
+
+/* ───────── 대시보드 ───────── */
+function renderHome() {
+  const runs = S.metas.filter(m => m.kind === 'run').sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const mine = S.metas.filter(m => m.kind === 'flow');
+  const total = Object.keys(SK).length;
+  $('#view-home').innerHTML = `
+    <div class="section-head" style="margin-top:0">
+      <div><h2>내 프로젝트</h2><p class="muted small">단계마다 Claude가 스킬 문서를 따라 일하고, 끝난 결과를 다음 단계로 넘겨요.</p></div>
+    </div>
+    ${runs.length ? `<div class="runs">${runs.map(runRow).join('')}</div>`
+      : `<div class="empty-state">아직 프로젝트가 없어요. 아래 흐름 중 하나를 고르거나 <b>새 프로젝트</b>에서 스킬을 골라 직접 이어 보세요.</div>`}
+
+    <div class="section-head">
+      <div><h2>워크플로우</h2><p class="muted small">작업 지침(04_작업지침)의 순서와 완료 조건을 그대로 옮긴 흐름이에요.</p></div>
+    </div>
+    <div class="flows">${FLOWS.concat(mine.map(m => m.flow)).map(flowCard).join('')}</div>
+
+    <div class="section-head">
+      <div><h2>파트별 스킬</h2><p class="muted small">스킬 ${total}개 · 파트 ${PARTS.length}개. 스킬을 누르면 설명과 참고 파일을 볼 수 있어요.</p></div>
+    </div>
+    <div class="parts">${PARTS.map(partCard).join('')}</div>`;
+  $('#view-home').querySelectorAll('[data-skill]').forEach(b => b.onclick = () => openSkill(b.dataset.skill));
+  $('#view-home').querySelectorAll('[data-flow]').forEach(b => b.onclick = () => showNew(b.dataset.flow));
+  $('#view-home').querySelectorAll('[data-delflow]').forEach(b => b.onclick = async () => {
+    await Store.remove(b.dataset.delflow, 0); S.metas = S.metas.filter(m => m.id !== b.dataset.delflow); renderHome();
+  });
+  $('#view-home').querySelectorAll('[data-run]').forEach(b => b.onclick = () => openRun(b.dataset.run));
+}
+function runRow(m) {
+  const st = m.status || [];
+  const done = st.filter(x => x === 'done' || x === 'skipped').length;
+  return `<button class="run-row" data-run="${esc(m.id)}">
+    <span><b>${esc(m.name)}</b> <span class="muted small">· ${esc(m.flow.name)} · ${m.auto ? '자동' : '확인'} 모드</span></span>
+    <span class="mono muted">${done}/${st.length} · ${esc(fmtDate(m.updatedAt))}</span>
+    <span class="bar">${st.map(x => `<i class="${x}"></i>`).join('')}</span></button>`;
+}
+function flowCard(f) {
+  const custom = !FLOWS.includes(f);
+  return `<article class="flow">
+    <div><h3>${esc(f.name)}</h3><p class="muted small">${esc(f.desc || '')}</p></div>
+    <div class="chain">${f.steps.map((s, i) => `${i ? '<span class="arrow">→</span>' : ''}<span class="chip" style="--pc:${pc(s.skill)}">${esc(s.title)}${s.optional ? ' <span class="muted">(선택)</span>' : ''}</span>`).join('')}</div>
+    <footer><span class="mono muted">${f.steps.length} STEPS${f.guide ? ' · 작업지침 포함' : ''}</span>
+      <span class="row">${custom ? `<button class="ghost danger" data-delflow="${esc(f.id)}">지우기</button>` : ''}<button data-flow="${esc(f.id)}">이 흐름으로 시작</button></span></footer>
+  </article>`;
+}
+function partCard(p) {
+  return `<section class="part" style="--pc:var(${p.color})">
+    <header><h3>${esc(p.name)}</h3><span class="mono muted">${p.skills.length}</span></header>
+    <p class="muted small" style="margin:0 8px 6px">${esc(p.note)}</p>
+    ${p.skills.filter(s => SK[s]).map(s => `<button class="skill-row" data-skill="${esc(s)}">
+      <span class="id">${esc(s)}</span>${NEED_OF[s] ? `<span class="need">${NEEDS[NEED_OF[s]][0]}</span>` : '<span></span>'}
+      <span class="lb">${esc(LABEL[s] || SK[s].desc.slice(0, 40))}</span></button>`).join('')}
+  </section>`;
+}
+function openSkill(id) {
+  const s = SK[id]; if (!s) return;
+  const need = NEED_OF[id];
+  $('#skill-dlg-body').innerHTML = `
+    <header><div><span class="mono muted">${esc(PART_OF[id]?.name || '')}</span><h2>${esc(id)}</h2><p>${esc(LABEL[id] || '')}</p></div>
+      <button class="ghost" id="dlg-close" aria-label="닫기">닫기</button></header>
+    <p class="small">${esc(s.desc)}</p>
+    ${need ? `<p class="notice" style="margin:0">${esc(NEEDS[need][1])}</p>` : ''}
+    <details><summary>SKILL.md</summary><pre>${esc(s.body)}</pre></details>
+    ${s.refs.map(r => `<details><summary class="mono">${esc(r.path)}</summary><pre>${esc(r.text)}</pre></details>`).join('')}
+    <div class="row" style="justify-content:flex-end"><button class="primary" id="dlg-start">이 스킬 하나로 시작</button></div>`;
+  $('#dlg-close').onclick = () => $('#skill-dlg').close();
+  $('#dlg-start').onclick = () => { $('#skill-dlg').close(); showNew('custom', [id]); };
+  $('#skill-dlg').showModal();
+}
+
+/* ───────── 새 프로젝트 ───────── */
+let draft = { flow: 'ad', custom: [] };
+function allFlows() { return FLOWS.concat(S.metas.filter(m => m.kind === 'flow').map(m => m.flow)); }
+function showNew(flowId, customSkills) {
+  draft = { flow: flowId || 'ad', custom: customSkills ? customSkills.slice() : draft.custom };
+  show('new'); renderNew();
+}
+function renderNew() {
+  const flows = allFlows();
+  $('#view-new').innerHTML = `<div class="panel"><form class="form" id="new-form">
+    <h2>새 프로젝트</h2>
+    <div class="field"><span class="label">흐름 고르기</span>
+      <div class="wf-pick">
+        ${flows.map(f => `<label><input type="radio" name="flow" value="${esc(f.id)}" ${draft.flow === f.id ? 'checked' : ''}>
+          <b>${esc(f.name)}</b><span class="muted small">${f.steps.length}단계 · ${esc(f.steps.map(s => s.title).join(' → '))}</span></label>`).join('')}
+        <label><input type="radio" name="flow" value="custom" ${draft.flow === 'custom' ? 'checked' : ''}>
+          <b>직접 만들기</b><span class="muted small">스킬을 골라 순서대로 잇기</span></label>
+      </div>
+    </div>
+    <div class="field" id="builder-field" ${draft.flow === 'custom' ? '' : 'hidden'}>
+      <span class="label">스킬 순서</span>
+      <div class="builder">
+        <div class="pool">${PARTS.flatMap(p => p.skills.filter(s => SK[s])).map(s => `<button type="button" data-add="${esc(s)}" style="--pc:${pc(s)}" title="${esc(LABEL[s] || '')}">${esc(s)}</button>`).join('')}</div>
+        <div>${draft.custom.length ? `<ol>${draft.custom.map((s, i) => `<li><span>${esc(s)} <span class="muted small">${esc(LABEL[s] || '')}</span></span>
+          <button type="button" data-up="${i}" aria-label="위로" ${i ? '' : 'disabled'}>↑</button><button type="button" data-down="${i}" aria-label="아래로" ${i < draft.custom.length - 1 ? '' : 'disabled'}>↓</button><button type="button" data-rm="${i}" aria-label="빼기">✕</button></li>`).join('')}</ol>`
+          : '<p class="muted small">왼쪽에서 스킬을 눌러 추가해요.</p>'}
+          <label class="row small" style="margin-top:8px"><input type="checkbox" id="save-flow"> 이 순서를 내 워크플로우로 저장</label>
+          <input type="text" id="flow-name" placeholder="워크플로우 이름 (예: 제품 런칭 콘텐츠)" style="margin-top:6px;width:100%">
+        </div>
+      </div>
+    </div>
+    <div class="field"><label for="run-name">프로젝트 이름</label><input type="text" id="run-name" required placeholder="예: 그린티 세럼 런칭 광고"></div>
+    <div class="field"><label for="run-brief">브리프</label>
+      <textarea id="run-brief" rows="7" placeholder="브랜드·제품, 목표, 타깃, 채널, 예산·일정, 톤, 꼭 지킬 것과 피할 것. 레퍼런스 링크나 메모도 그대로 붙여 넣어요. 모든 단계가 이 내용을 읽어요."></textarea></div>
+    <div class="field"><span class="label">진행 방식</span>
+      <div class="seg"><label><input type="radio" name="mode" value="confirm" checked> 확인 모드</label><label><input type="radio" name="mode" value="auto"> 자동 모드</label></div>
+      <p class="muted small">확인 모드는 스킬이 묻는 질문(컨셉 고르기, 배우 픽 등)에서 멈춰 답을 받아요. 자동 모드는 묻지 않고 가정을 표시하며 끝까지 이어 가요. 빠른 초안용이에요.</p></div>
+    <div class="field"><label for="run-tier">Claude 모델</label>
+      <select id="run-tier" style="max-width:220px">${Object.entries(TIERS).map(([k, v]) => `<option value="${k}" ${k === 'default' ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+    <p class="err" id="new-err" hidden></p>
+    <div class="row"><button type="submit" class="primary">프로젝트 만들기</button><button type="button" class="ghost" id="new-cancel">취소</button></div>
+  </form></div>`;
+  const f = $('#new-form');
+  f.querySelectorAll('input[name=flow]').forEach(r => r.onchange = () => { draft.flow = r.value; $('#builder-field').hidden = draft.flow !== 'custom'; });
+  f.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { draft.custom.push(b.dataset.add); keepAndRender(); });
+  f.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { draft.custom.splice(+b.dataset.rm, 1); keepAndRender(); });
+  f.querySelectorAll('[data-up]').forEach(b => b.onclick = () => { const i = +b.dataset.up; [draft.custom[i - 1], draft.custom[i]] = [draft.custom[i], draft.custom[i - 1]]; keepAndRender(); });
+  f.querySelectorAll('[data-down]').forEach(b => b.onclick = () => { const i = +b.dataset.down; [draft.custom[i + 1], draft.custom[i]] = [draft.custom[i], draft.custom[i + 1]]; keepAndRender(); });
+  $('#new-cancel').onclick = () => show('home');
+  f.onsubmit = e => { e.preventDefault(); createRun(); };
+}
+function keepAndRender() {
+  const keep = ['run-name', 'run-brief', 'flow-name'].map(id => [id, $('#' + id)?.value]);
+  const mode = $('input[name=mode]:checked')?.value, tier = $('#run-tier')?.value, save = $('#save-flow')?.checked;
+  renderNew();
+  keep.forEach(([id, v]) => { if (v != null && $('#' + id)) $('#' + id).value = v; });
+  if (mode) $(`input[name=mode][value=${mode}]`).checked = true;
+  if (tier) $('#run-tier').value = tier;
+  if ($('#save-flow')) $('#save-flow').checked = !!save;
+}
+function customFlow(skills, name) {
+  return { id: 'f' + Date.now().toString(36), name: name || '직접 만든 흐름', desc: skills.join(' → '),
+    steps: skills.map(s => ({ skill: s, title: (LABEL[s] || s).split(/[(,]/)[0].trim(), done: ['결과물 완성', '사용자 확인'], out: '이 단계 결과물 전체 (표·프롬프트·번호 그대로)' })) };
+}
+async function createRun() {
+  const err = $('#new-err'); err.hidden = true;
+  const name = $('#run-name').value.trim();
+  let flow;
+  if (draft.flow === 'custom') {
+    if (!draft.custom.length) { err.textContent = '스킬을 하나 이상 골라 주세요.'; err.hidden = false; return; }
+    flow = customFlow(draft.custom, $('#flow-name').value.trim());
+    if ($('#save-flow').checked) {
+      const meta = { id: flow.id, kind: 'flow', flow, updatedAt: Date.now() };
+      S.metas.push(meta); Store.putMeta(meta);
+    }
+  } else flow = allFlows().find(f => f.id === draft.flow);
+  if (!name) { err.textContent = '프로젝트 이름을 적어 주세요.'; err.hidden = false; return; }
+  const meta = { id: 'r' + Date.now().toString(36), kind: 'run', name, flow: clone(flow), brief: $('#run-brief').value.trim(),
+    auto: $('input[name=mode]:checked').value === 'auto', tier: $('#run-tier').value,
+    status: flow.steps.map(() => 'todo'), cur: 0, createdAt: Date.now(), updatedAt: Date.now() };
+  S.metas.push(meta); await Store.putMeta(meta);
+  S.run = meta; S.steps = flow.steps.map(() => ({ status: 'todo', messages: [], handoff: '' })); S.cur = 0;
+  show('run'); renderRun();
+}
+
+/* ───────── 프로젝트 ───────── */
+async function openRun(id) {
+  const m = S.metas.find(x => x.id === id); if (!m) return;
+  S.run = m; S.cur = m.cur || 0; S.steps = await Store.getSteps(id, m.flow.steps.length);
+  show('run'); renderRun();
+}
+function saveMeta() { S.run.status = S.steps.map(s => s.status); S.run.cur = S.cur; S.run.updatedAt = Date.now(); return Store.putMeta(S.run); }
+function saveStep(i) { return Store.putStep(S.run.id, i, S.steps[i]); }
+
+function renderRun() {
+  const r = S.run, st = r.flow.steps[S.cur], step = S.steps[S.cur];
+  const need = NEED_OF[st.skill];
+  const nextTodo = S.steps.findIndex((s, i) => i > S.cur && s.status !== 'done' && s.status !== 'skipped');
+  const remaining = S.steps.some(s => s.status !== 'done' && s.status !== 'skipped');
+  const checks = parseChecks(lastAssistant(step));
+  $('#view-run').innerHTML = `
+    <div class="run-head">
+      <div><span class="mono muted">${esc(r.flow.name)}</span><h2>${esc(r.name)}</h2></div>
+      <div class="tools">
+        <div class="seg" role="group" aria-label="진행 방식"><label><input type="radio" name="rmode" value="confirm" ${r.auto ? '' : 'checked'}> 확인</label><label><input type="radio" name="rmode" value="auto" ${r.auto ? 'checked' : ''}> 자동</label></div>
+        <select id="rtier" aria-label="Claude 모델">${Object.entries(TIERS).map(([k, v]) => `<option value="${k}" ${k === r.tier ? 'selected' : ''}>${v}</option>`).join('')}</select>
+        <button id="b-auto" class="primary" ${!remaining || !S.sample ? 'disabled' : ''}>${S.autoRunning ? '자동 실행 중…' : '남은 단계 자동 실행'}</button>
+        <button id="b-export">내보내기</button>
+        <button id="b-brief" class="ghost">브리프</button>
+        <button id="b-del" class="ghost danger">삭제</button>
+      </div>
+    </div>
+    <div class="pipe-wrap"><div class="pipe">${r.flow.steps.map((s, i) => `
+      <button class="stage ${i === S.cur ? 'cur' : ''}" data-step="${i}" style="--pc:${pc(s.skill)}">
+        <span class="n"><span>STEP ${pad(i + 1)}</span><span class="pill ${S.steps[i].status}">${statusName(S.steps[i].status)}</span></span>
+        <span class="t">${esc(s.title)}${s.optional ? ' <span class="muted small">(선택)</span>' : ''}</span>
+        <span class="s">${esc(s.skill)}</span></button>`).join('')}</div></div>
+    <div id="brief-box" class="panel" hidden style="margin-bottom:14px">
+      <div class="field"><label for="brief-edit">브리프 (모든 단계가 읽어요)</label><textarea id="brief-edit" rows="6">${esc(r.brief)}</textarea></div>
+      <div class="row" style="margin-top:8px"><button id="brief-save">저장</button></div>
+    </div>
+    <div class="workspace">
+      <section class="chat">
+        <div class="chat-head">
+          <span class="mono muted">STEP ${pad(S.cur + 1)} · ${esc(PART_OF[st.skill]?.name || '')}</span>
+          <h3>${esc(st.title)} <span class="muted small mono">${esc(st.skill)}${st.extra ? ' + ' + esc(st.extra.join(', ')) : ''}</span></h3>
+          ${need ? `<p class="muted small">${esc(NEEDS[need][1])}</p>` : ''}
+        </div>
+        <div class="msgs" id="msgs">${renderMsgs(step)}</div>
+        <div class="composer">
+          <div class="attach-list" id="attach-list">${attachChips()}</div>
+          <textarea id="composer" rows="3" placeholder="${step.messages.length ? '답하거나 고칠 점을 적어요' : '이 단계에 더할 말이 있으면 적어요. 비워 두고 시작해도 돼요'}"></textarea>
+          <div class="row">
+            <span class="row">
+              <label class="small"><input type="file" id="f-img" accept="image/*" multiple hidden><button type="button" id="b-img" ${S.imgLimits ? '' : 'hidden'}>이미지 첨부</button></label>
+              <label class="small"><input type="file" id="f-txt" accept=".txt,.md,.csv,.srt,.vtt,.json,.tsv" multiple hidden><button type="button" id="b-txt">글 파일 첨부</button></label>
+              <button type="button" class="ghost" id="b-copy">프롬프트 복사</button>
+            </span>
+            <span class="row">
+              <button type="button" id="b-stop" ${S.busy ? '' : 'hidden'}>중지</button>
+              <button type="button" class="primary" id="b-send" ${S.busy || !S.sample ? 'disabled' : ''}>${step.messages.length ? '보내기' : '이 단계 시작'}</button>
+            </span>
+          </div>
+          <p class="err" id="run-err" hidden></p>
+        </div>
+      </section>
+      <aside class="side">
+        <div class="panel">
+          <h3>완료 조건</h3>
+          <ul class="checks">${st.done.map((d, i) => `<li class="${checks[i] || ''}">${esc(d)}</li>`).join('')}</ul>
+          <p class="muted small">Claude 답 끝의 점검표를 읽어 표시해요. 최종 판단은 직접 해요.</p>
+        </div>
+        <div class="panel">
+          <label for="handoff"><h3>다음 단계로 넘길 것</h3></label>
+          <p class="muted small">${esc(st.out)}</p>
+          <textarea id="handoff" placeholder="단계가 끝나면 Claude 답의 「다음 단계로 넘길 것」이 여기 채워져요. 직접 고쳐도 돼요.">${esc(step.handoff)}</textarea>
+          <div class="row">
+            ${step.status === 'done'
+              ? `<button id="b-reopen">다시 열기</button>`
+              : `<button class="primary" id="b-done" ${S.busy ? 'disabled' : ''}>단계 완료${nextTodo >= 0 ? ' → 다음' : ''}</button><button id="b-skip" class="ghost" ${S.busy ? 'disabled' : ''}>건너뛰기</button>`}
+          </div>
+        </div>
+      </aside>
+    </div>`;
+  bindRun();
+  const m = $('#msgs'); if (m && S.busy) m.lastElementChild?.scrollIntoView({ block: 'end' });
+}
+function statusName(s) { return { todo: '대기', active: '진행 중', done: '완료', skipped: '건너뜀' }[s] || s; }
+function renderMsgs(step) {
+  const list = step.messages.map(m => `<div class="msg ${m.role}">
+    <div class="who">${m.role === 'user' ? '나' : 'Claude'}${m.files?.length ? `<span class="need">${esc(m.files.join(', '))}</span>` : ''}</div>
+    <div class="body ${m.role === 'assistant' ? 'md' : ''}">${m.role === 'assistant' ? md(m.content) : esc(m.content)}</div></div>`).join('');
+  const live = S.busy ? `<div class="msg assistant" id="live"><div class="who">Claude</div><div class="body md">${S.live ? md(S.live) : '<span class="thinking">생각하는 중</span>'}</div></div>` : '';
+  return list + live || `<p class="muted small">아직 대화가 없어요. <b>이 단계 시작</b>을 누르면 Claude가 ${esc(S.run.flow.steps[S.cur].skill)} 스킬 문서와 브리프, 앞 단계 결과를 읽고 시작해요.</p>`;
+}
+function attachChips() { return S.pending.images.map(f => `<span>🖼 ${esc(f.name)}</span>`).concat(S.pending.texts.map(t => `<span>📄 ${esc(t.name)}</span>`)).join(''); }
+
+function bindRun() {
+  document.querySelectorAll('[data-step]').forEach(b => b.onclick = () => { if (S.busy) return; S.cur = +b.dataset.step; saveMeta(); renderRun(); });
+  document.querySelectorAll('input[name=rmode]').forEach(r => r.onchange = () => { S.run.auto = r.value === 'auto'; saveMeta(); });
+  $('#rtier').onchange = e => { S.run.tier = e.target.value; saveMeta(); };
+  $('#b-brief').onclick = () => { $('#brief-box').hidden = !$('#brief-box').hidden; };
+  $('#brief-save').onclick = () => { S.run.brief = $('#brief-edit').value.trim(); saveMeta(); toast('브리프를 저장했어요'); $('#brief-box').hidden = true; };
+  $('#b-del').onclick = () => confirmDelete();
+  $('#b-export').onclick = () => exportRun();
+  $('#b-copy').onclick = () => copyText(manualPrompt());
+  $('#b-img').onclick = () => $('#f-img').click();
+  $('#b-txt').onclick = () => $('#f-txt').click();
+  $('#f-img').onchange = e => { const max = S.imgLimits?.maxCount || 4; S.pending.images = S.pending.images.concat([...e.target.files]).slice(0, max); $('#attach-list').innerHTML = attachChips(); };
+  $('#f-txt').onchange = async e => {
+    for (const f of e.target.files) { try { S.pending.texts.push({ name: f.name, text: (await f.text()).slice(0, 60000) }); } catch (_) { toast(f.name + '을 읽지 못했어요'); } }
+    $('#attach-list').innerHTML = attachChips();
+  };
+  $('#b-send').onclick = () => sendTurn($('#composer').value.trim());
+  $('#b-stop').onclick = () => { S.autoRunning = false; S.ctl?.abort(); };
+  $('#b-auto').onclick = () => autoRun();
+  $('#handoff').oninput = e => { S.steps[S.cur].handoff = e.target.value; clearTimeout(S.hTimer); S.hTimer = setTimeout(() => saveStep(S.cur), 600); };
+  $('#b-done') && ($('#b-done').onclick = () => finishStep('done'));
+  $('#b-skip') && ($('#b-skip').onclick = () => finishStep('skipped'));
+  $('#b-reopen') && ($('#b-reopen').onclick = () => { S.steps[S.cur].status = S.steps[S.cur].messages.length ? 'active' : 'todo'; saveStep(S.cur); saveMeta(); renderRun(); });
+}
+function confirmDelete() {
+  const btn = $('#b-del');
+  if (btn.dataset.armed) {
+    Store.remove(S.run.id, S.run.flow.steps.length); S.metas = S.metas.filter(m => m.id !== S.run.id); S.run = null; show('home'); return;
+  }
+  btn.dataset.armed = '1'; btn.textContent = '한 번 더 누르면 삭제'; setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = '삭제'; } }, 3000);
+}
+function finishStep(status) {
+  const step = S.steps[S.cur];
+  step.status = status;
+  if (status === 'done' && !step.handoff.trim()) step.handoff = parseHandoff(lastAssistant(step)) || lastAssistant(step);
+  if (status === 'skipped') step.handoff = step.handoff || '없음 (건너뜀)';
+  saveStep(S.cur);
+  const next = S.steps.findIndex((s, i) => i > S.cur && s.status !== 'done' && s.status !== 'skipped');
+  if (next >= 0) S.cur = next;
+  saveMeta(); renderRun();
+}
+
+/* ───────── Claude에게 보낼 글 ───────── */
+function lastAssistant(step) { for (let i = step.messages.length - 1; i >= 0; i--) if (step.messages[i].role === 'assistant') return step.messages[i].content; return ''; }
+function parseHandoff(t) {
+  const re = /^#{1,4}\s*(?:📦\s*)?다음 단계로 넘길 것[^\n]*$/gm; let m, last = null;
+  while ((m = re.exec(t))) last = m;
+  return last ? t.slice(last.index + last[0].length).trim() : '';
+}
+function parseChecks(t) {
+  const st = S.run?.flow.steps[S.cur]; if (!t || !st) return [];
+  const a = t.search(/^#{1,4}\s*완료 조건 점검/m); if (a < 0) return [];
+  const b = t.slice(a).search(/^#{1,4}\s*(?:📦\s*)?다음 단계로 넘길 것/m);
+  const block = t.slice(a, b > 0 ? a + b : undefined).split('\n').filter(l => /✅|❌|\[x\]|\[ \]/i.test(l));
+  return st.done.map((d, i) => { const l = block[i]; if (!l) return ''; return /✅|\[x\]/i.test(l) ? 'y' : 'n'; });
+}
+function instruction(i, budget) {
+  const r = S.run, st = r.flow.steps[i], s = SK[st.skill];
+  const parts = [];
+  parts.push('너는 아래 [스킬] 문서를 작업 설명서로 삼아 일하는 제작 파트너다. 스킬 문서의 절차·질문·멈추는 곳·금지 사항을 그대로 따른다. 답은 한국어로, 쉽게 풀어서, 제목·짧은 줄·표로 나눠 쓴다.');
+  parts.push('\n## 실행 환경 (꼭 지킬 것)\n이 대화는 웹 대시보드에서 돌아간다. 파일 만들기, 코드(파이썬) 실행, Higgsfield·노션 같은 연결, 웹 검색, 영상 파일 열기를 할 수 없다. 사용자가 첨부한 이미지와 글만 볼 수 있다.\n- 스킬이 생성 도구를 쓰라고 하면 "연결 없음 / 프롬프트 모드" 경로를 따라 붙여 쓸 프롬프트까지만 낸다.\n- 스크립트 계산·검산이 필요하면 직접 계산해 표로 보여 주고 "스크립트 검산 못 함"이라고 적는다.\n- 파일(.md·.csv·.xlsx·.pptx)을 만들라는 곳에서는 그 내용을 마크다운(표·코드 블록)으로 답에 낸다.\n- "스킬을 호출하라"는 지시는 이 문서를 따르는 것으로 갈음한다.');
+
+  const skill = ['\n## [스킬] ' + st.skill + '\n' + s.body];
+  const refs = s.refs.map(x => '\n### [참고 파일] ' + st.skill + '/' + x.path + '\n' + x.text);
+  const extras = (st.extra || []).filter(x => SK[x]).map(x => '\n## [함께 쓰는 스킬] ' + x + '\n' + SK[x].body);
+  const guide = r.flow.guide && GUIDES[r.flow.guide] ? ['\n## [작업 지침 원문]\n' + GUIDES[r.flow.guide]] : [];
+
+  const ctx = [];
+  ctx.push('\n## 워크플로우: ' + r.flow.name + '\n' + r.flow.steps.map((x, k) => (k === i ? '▶ ' : '  ') + (k + 1) + '. ' + x.title + ' (' + x.skill + (x.stage ? ' · ' + x.stage : '') + ')' + (S.steps[k].status === 'done' ? ' ✅' : S.steps[k].status === 'skipped' ? ' (건너뜀)' : '')).join('\n'));
+  ctx.push('\n지금은 ' + (i + 1) + '단계 「' + st.title + '」만 한다.' + (st.stage ? ' 스킬 안의 「' + st.stage + '」 단계에 해당한다.' : '') + ' 다음 단계의 일은 하지 않는다.\n완료 조건: ' + st.done.join(' · ') + '\n다음 단계로 넘길 것: ' + st.out);
+  ctx.push('\n## 프로젝트: ' + r.name + '\n### 브리프\n' + (r.brief || '(브리프 없음. 필요한 것은 사용자에게 묻는다)'));
+  const prev = S.steps.map((x, k) => ({ x, k })).filter(({ x, k }) => k < i && x.status === 'done' && x.handoff.trim());
+  let handoffs = prev.map(({ x, k }) => '\n### 앞 단계 결과 — ' + (k + 1) + '. ' + r.flow.steps[k].title + '\n' + x.handoff);
+  if (r.auto) ctx.push('\n## 진행 방식: 자동\n사용자에게 묻거나 고르게 하지 말고, 브리프와 앞 단계 결과로 합리적인 선택을 해서 이 단계를 끝까지 마친다. 사용자가 고르는 자리(컨셉 안, 배우 픽 등)는 브리프에 가장 맞는 안을 골라 "가정"으로 표시한다. 사용자가 주지 않은 실적·수치·단가·고객사명·정책은 지어내지 말고 [확인 필요] 빈칸으로 둔다. 이미지·영상 생성처럼 크레딧이 드는 일은 프롬프트까지만 낸다.' + (st.optional ? ' 브리프상 이 단계가 필요 없으면 이유 한 줄을 적고 넘길 것을 "없음"으로 한다.' : ''));
+  else ctx.push('\n## 진행 방식: 확인\n스킬 안의 질문·확인은 건너뛰지 않는다. 사용자 답이 필요하면 질문하고 멈춘다. 사용자가 고르거나 확인할 칸을 대신 ✅로 적지 않는다. 앞 단계 결과나 브리프에 이미 답이 있으면 다시 묻지 않는다.');
+  const fmt = '\n## 답의 형식\n이 단계를 마칠 수 있게 되면(자동 모드는 매번) 답 맨 끝에 아래 두 제목을 그대로 붙인다. 아직 사용자 답을 기다리는 중이면 붙이지 않는다.\n\n## 완료 조건 점검\n' + st.done.map(d => '- ✅ 또는 ❌ ' + d).join('\n') + '\n\n## 다음 단계로 넘길 것\n(다음 단계가 이것만 읽고 이어 갈 수 있게 결과물 전체를 그대로 적는다. 요약하지 말고 표·프롬프트·씬 번호를 살린다.)';
+
+  // 용량을 넘으면 큰 참고 파일 → 작업 지침 → 함께 쓰는 스킬 → 앞 단계 결과 순으로 줄임
+  const assemble = () => parts.concat(skill, refs, extras, guide, ctx, handoffs, [fmt]).join('\n');
+  let text = assemble();
+  const cut = [];
+  while (bytes(text) > budget) {
+    if (refs.length) { let k = 0; refs.forEach((x, j) => { if (x.length > refs[k].length) k = j; }); cut.push(refs[k].split('\n')[1]); refs.splice(k, 1); }
+    else if (guide.length) { guide.pop(); cut.push('작업 지침'); }
+    else if (extras.length) { cut.push(extras.pop().split('\n')[1]); }
+    else if (handoffs.some(h => h.length > 6000)) handoffs = handoffs.map(h => h.length > 6000 ? h.slice(0, 6000) + '\n…(길어서 줄임)' : h);
+    else break;
+    text = assemble();
+  }
+  if (cut.length) text += '\n\n(용량 때문에 뺀 참고 자료: ' + cut.join(', ') + ' — 필요하면 사용자에게 붙여 달라고 한다)';
+  return text;
+}
+function turnsFor(i) {
+  const msgs = S.steps[i].messages.map(m => ({ role: m.role, content: m.content }));
+  let used = msgs.reduce((n, m) => n + bytes(m.content), 0);
+  while (used > MAX_BYTES * 0.5 && msgs.length > 2) { used -= bytes(msgs[0].content) + bytes(msgs[1].content); msgs.splice(0, 2); }
+  if (msgs.length && msgs[0].role === 'assistant') msgs.shift();
+  return [{ role: 'user', content: instruction(i, MAX_BYTES - used - 4000) }].concat(msgs);
+}
+function manualPrompt() {
+  const turns = turnsFor(S.cur);
+  const draftMsg = $('#composer')?.value.trim();
+  return turns.map(t => (t.role === 'assistant' ? '[Claude의 앞선 답]\n' : '') + t.content).join('\n\n---\n\n') + (draftMsg ? '\n\n---\n\n' + draftMsg : turns.length === 1 ? '\n\n---\n\n이 단계를 시작해 줘.' : '');
+}
+
+/* ───────── 실행 ───────── */
+const ERR = {
+  not_granted: '이 페이지가 Claude를 쓰도록 허용되지 않았어요. 허용하면 다시 쓸 수 있어요.',
+  sampling_disabled: '이 계정에서는 페이지가 Claude를 쓸 수 없어요.',
+  rate_limited: '사용량 한도나 호출 횟수에 걸렸어요. 잠시 뒤 다시 보내 주세요.',
+  session_expired: 'claude.ai 로그인이 풀렸어요. 다시 로그인해 주세요.',
+  prompt_too_large: '보낼 내용이 너무 커요. 첨부를 줄이거나 앞 단계 결과를 줄여 주세요.',
+  image_rejected: '이미지를 받지 못했어요. 다른 파일(JPG·PNG·WebP)로 바꿔 주세요.',
+  images_unavailable: '이 화면에서는 이미지를 보낼 수 없어요. 글로 설명해 주세요.',
+  refused: 'Claude가 이 요청에 답하지 않았어요. 표현을 바꿔 다시 보내 주세요.',
+  empty_completion: '빈 답이 왔어요. 요청을 조금 줄여 다시 보내 주세요.',
+  upstream_error: '연결이 잠깐 끊겼어요. 다시 보내 주세요.'
+};
+async function sendTurn(text, opts = {}) {
+  if (S.busy || !S.sample) return false;
+  const i = S.cur, step = S.steps[i];
+  let content = text || (step.messages.length ? '' : (S.run.auto ? '이 단계를 진행해 줘.' : '이 단계를 시작해 줘.'));
+  const files = [];
+  S.pending.texts.forEach(t => { content += '\n\n[첨부 글: ' + t.name + ']\n```\n' + t.text + '\n```'; files.push(t.name); });
+  const images = S.pending.images.slice();
+  images.forEach(f => files.push(f.name));
+  if (images.length) content += '\n\n(이미지 ' + images.length + '장 첨부: ' + images.map(f => f.name).join(', ') + ')';
+  if (!content.trim()) { toast('보낼 말을 적어 주세요'); return false; }
+  step.messages.push({ role: 'user', content: content.trim(), files });
+  if (step.status === 'todo') step.status = 'active';
+  S.pending = { images: [], texts: [] };
+  S.busy = true; S.live = ''; S.ctl = new AbortController();
+  saveMeta(); renderRun();
+  const liveEl = () => $('#live .body');
+  let ok = false;
+  try {
+    const res = await S.sample(turnsFor(i), {
+      signal: S.ctl.signal, cache: false, modelTier: S.run.tier || 'default',
+      ...(images.length ? { images } : {}),
+      onText: ({ text: t }) => { S.live = t; const el = liveEl(); if (el && S.cur === i) el.innerHTML = md(t); }
+    });
+    step.messages.push({ role: 'assistant', content: res.text + (res.truncated ? '\n\n> (답이 길어 중간에 끊겼어요. "이어서"라고 보내면 계속해요.)' : '') });
+    const h = parseHandoff(res.text); if (h) step.handoff = h;
+    ok = true;
+  } catch (e) {
+    if (e && e.text) step.messages.push({ role: 'assistant', content: e.text + '\n\n> (중간에 멈췄어요)' });
+    if (e?.code === 'not_granted' || e?.code === 'sampling_disabled') { S.sample = null; $('#sample-notice').hidden = false; }
+    S.lastErr = e?.code === 'cancelled' ? '' : (ERR[e?.code] || ERR.upstream_error);
+  } finally {
+    S.busy = false; S.live = ''; S.ctl = null;
+    await saveStep(i); saveMeta();
+    if (!opts.quiet || !ok) { renderRun(); if (S.lastErr) { $('#run-err').textContent = S.lastErr; $('#run-err').hidden = false; } }
+    S.lastErr = '';
+  }
+  return ok;
+}
+async function autoRun() {
+  if (S.autoRunning || S.busy) return;
+  S.autoRunning = true;
+  const wasAuto = S.run.auto; S.run.auto = true; saveMeta();
+  try {
+    for (let i = 0; i < S.steps.length && S.autoRunning; i++) {
+      const s = S.steps[i]; if (s.status === 'done' || s.status === 'skipped') continue;
+      S.cur = i; renderRun();
+      const ok = await sendTurn(s.messages.length ? '자동 모드로 바꿨어. 묻지 말고 가정을 표시하면서 이 단계를 끝까지 마쳐 줘.' : '', { quiet: true });
+      if (!ok || !S.autoRunning) break;
+      if (!s.handoff.trim()) s.handoff = lastAssistant(s);
+      s.status = 'done'; await saveStep(i); saveMeta();
+    }
+  } finally {
+    S.autoRunning = false; S.run.auto = wasAuto; saveMeta(); renderRun();
+    if (S.steps.every(s => s.status === 'done' || s.status === 'skipped')) toast('모든 단계를 마쳤어요. 내보내기로 받아 보세요');
+  }
+}
+
+/* ───────── 내보내기 ───────── */
+function runMarkdown() {
+  const r = S.run;
+  const out = ['# ' + r.name, '', '- 흐름: ' + r.flow.name, '- 진행 방식: ' + (r.auto ? '자동' : '확인'), '- 내보낸 때: ' + new Date().toLocaleString('ko-KR'), '', '## 브리프', '', r.brief || '(없음)', '', '## 진행표', '', '| 단계 | 스킬 | 상태 |', '|---|---|---|'];
+  r.flow.steps.forEach((s, i) => out.push('| ' + (i + 1) + '. ' + s.title + ' | ' + s.skill + ' | ' + statusName(S.steps[i].status) + ' |'));
+  r.flow.steps.forEach((s, i) => {
+    const st = S.steps[i];
+    out.push('', '---', '', '## ' + (i + 1) + '. ' + s.title + ' (' + s.skill + ')', '', '### 넘길 것', '', st.handoff || '(없음)');
+    if (st.messages.length) { out.push('', '### 대화 기록'); st.messages.forEach(m => out.push('', '**' + (m.role === 'user' ? '나' : 'Claude') + '**', '', m.content)); }
+  });
+  return out.join('\n');
+}
+async function exportRun() {
+  const text = runMarkdown();
+  const dl = await use('downloads');
+  if (dl) {
+    try { await dl.save({ filename: S.run.name.replace(/[\\/:*?"<>|]/g, '_') + '.md', data: text }); toast('파일을 저장했어요'); return; }
+    catch (e) { if (e?.code === 'cancelled' || e?.code === 'declined') return; }
+  }
+  copyText(text);
+}
+
+/* ───────── 화면 전환·시작 ───────── */
+function show(v) {
+  ['home', 'new', 'run'].forEach(x => { $('#view-' + x).hidden = x !== v; });
+  if (v === 'home') renderHome();
+  window.scrollTo(0, 0);
+}
+$('#nav-home').onclick = () => { if (!S.busy) show('home'); };
+$('#nav-new').onclick = () => { if (!S.busy) showNew(draft.flow); };
+
+renderHome();
+(async () => {
+  await Store.init();
+  $('#store-note').textContent = { db: '· claude.ai 계정에 저장', local: '· 이 브라우저에 저장', memory: '· 저장 안 됨 (창을 닫으면 사라져요)' }[Store.mode];
+  try { S.metas = await Store.list(); } catch (e) { S.metas = []; toast('저장된 프로젝트를 불러오지 못했어요'); }
+  if (!$('#view-home').hidden) renderHome();
+  const sample = await use('sample');
+  S.sample = sample;
+  if (sample) { try { const lim = await sample.limits(); S.imgLimits = lim.images || null; } catch (e) { S.imgLimits = null; } }
+  $('#sample-notice').hidden = !!sample;
+  if (S.run && !$('#view-run').hidden) renderRun();
+})();
+</script>
