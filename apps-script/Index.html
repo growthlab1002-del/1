@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #6b7280; --line: #e5e7eb;
+    --red: #d92d20; --red-bg: #fef3f2; --orange: #b54708; --orange-bg: #fffaeb;
+    --green: #067647; --green-bg: #ecfdf3; --blue: #1d4ed8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  header { padding: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+  h1 { font-size: 18px; margin: 0; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 12px; }
+  select, button { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  button { cursor: pointer; }
+  button.primary { background: var(--text); color: #fff; border-color: var(--text); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; cursor: pointer; }
+  .card .n { font-size: 26px; font-weight: 700; }
+  .card.bad { border-color: #fecdca; background: var(--red-bg); } .card.bad .n { color: var(--red); }
+  .card.ok .n { color: var(--green); }
+  .card.hold .n { color: var(--orange); }
+  section { margin: 18px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  section h2 { font-size: 15px; margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+  .empty { padding: 14px; color: var(--green); }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; background: #fafafa; }
+  td.reason { color: var(--red); min-width: 180px; }
+  td.nowrap, td.age { white-space: nowrap; }
+  tr.warn td.age { color: var(--orange); font-weight: 700; } tr.alert td.age { color: var(--red); font-weight: 700; }
+  tr.dismissed { opacity: .4; }
+  a { color: var(--blue); text-decoration: none; }
+  .small { font-size: 12px; }
+  .warnbox { margin: 0 16px 12px; padding: 10px 12px; background: var(--orange-bg); color: var(--orange); border-radius: 8px; }
+  details { margin: 18px 16px 40px; } summary { cursor: pointer; color: var(--muted); }
+  .status-list { columns: 2 260px; font-size: 12px; padding: 8px 0; }
+  #loading { padding: 40px 16px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>주문 점검 대시보드</h1>
+    <div class="muted" id="updated">불러오는 중…</div>
+  </div>
+  <button class="primary" onclick="load()">새로고침</button>
+</header>
+<div class="filters">
+  <select id="business"><option value="">전체 사업자</option></select>
+  <select id="channel"><option value="">전체 판매처</option></select>
+  <select id="period">
+    <option value="14">최근 14일</option><option value="30">최근 30일</option>
+    <option value="60" selected>최근 60일</option><option value="120">최근 120일</option><option value="365">최근 1년</option>
+  </select>
+  <label class="small"><input type="checkbox" id="showDismissed"> 확인한 건도 보기</label>
+</div>
+<div id="warnings"></div>
+<div class="cards" id="cards"></div>
+<div id="loading">시트를 읽는 중이에요… (몇 초 걸려요)</div>
+<div id="sections"></div>
+<details><summary>시트에 있는 상태값 목록 (기준 조정용)</summary><div class="status-list" id="statuses"></div></details>
+
+<script>
+  var report = null;
+  var filtersReady = false;
+
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function load() {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('updated').textContent = '불러오는 중…';
+    google.script.run
+      .withSuccessHandler(function (r) { report = r; render(); })
+      .withFailureHandler(function (e) {
+        document.getElementById('loading').textContent = '오류: ' + e.message;
+      })
+      .getReport({
+        business: document.getElementById('business').value,
+        channel: document.getElementById('channel').value,
+        periodDays: document.getElementById('period').value
+      });
+  }
+
+  function fillFilters() {
+    if (filtersReady) return;
+    var b = document.getElementById('business'), c = document.getElementById('channel');
+    report.filters.businesses.forEach(function (x) { b.add(new Option(x, x)); });
+    report.filters.channels.forEach(function (x) { c.add(new Option(x, x)); });
+    filtersReady = true;
+  }
+
+  function visible(items) {
+    var all = document.getElementById('showDismissed').checked;
+    return items.filter(function (it) { return all || !it.dismissed; });
+  }
+
+  function render() {
+    fillFilters();
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('updated').textContent =
+      '마지막 조회 ' + new Date(report.generatedAt).toLocaleString('ko-KR') + ' · 최근 ' + report.periodDays + '일';
+    document.getElementById('warnings').innerHTML = (report.warnings || []).map(function (w) {
+      return '<div class="warnbox">' + esc(w) + '</div>';
+    }).join('');
+
+    var cards = '', sections = '';
+    report.checks.forEach(function (c) {
+      var items = visible(c.items);
+      var cls = c.kind === 'hold' ? 'hold' : (items.length ? 'bad' : 'ok');
+      var sub = '';
+      if (c.kind === 'hold') {
+        var alert = items.filter(function (i) { return i.level === 'alert'; }).length;
+        sub = '<div class="small">5일 이상 ' + alert + '건</div>';
+      }
+      cards += '<div class="card ' + cls + '" onclick="document.getElementById(\'s-' + c.id + '\').scrollIntoView({behavior:\'smooth\'})">' +
+        '<div class="small">' + esc(c.title) + '</div><div class="n">' + items.length + '</div>' + sub + '</div>';
+      sections += renderSection(c, items);
+    });
+    document.getElementById('cards').innerHTML = cards;
+    document.getElementById('sections').innerHTML = sections;
+
+    var sc = report.statusCounts;
+    document.getElementById('statuses').innerHTML = Object.keys(sc).sort().map(function (k) {
+      return '<div>' + esc(k) + ' — ' + sc[k] + '건</div>';
+    }).join('');
+  }
+
+  function renderSection(c, items) {
+    var head = '<section id="s-' + c.id + '"><h2><span>' + esc(c.title) + '</span><span class="muted">' + items.length + '건</span></h2>';
+    if (!items.length) return head + '<div class="empty">' + (c.kind === 'hold' ? '체크 건이 없어요.' : '문제없어요 ✓') + '</div></section>';
+    var isHold = c.kind === 'hold';
+    var rows = items.map(function (it) {
+      var cls = (it.level || '') + (it.dismissed ? ' dismissed' : '');
+      return '<tr class="' + cls + '">' +
+        (isHold ? '<td class="age">' + (it.ageDays == null ? '-' : it.ageDays + '일') + '</td>'
+                : '<td class="reason">' + esc(it.reason) + '</td>') +
+        '<td>' + esc(it.tab) + '<div class="muted">' + esc(it.channel || '') + '</div></td>' +
+        '<td class="nowrap">' + esc(it.orderDate || '') + '</td>' +
+        '<td><a href="' + esc(it.link) + '" target="_blank">' + esc(it.orderNo) + '</a><div class="muted">' + esc(it.buyer || '') + '</div></td>' +
+        '<td>' + esc(it.product || '') + '<div class="muted">' + esc(it.option || '') + (it.qty ? ' · ' + it.qty + '개' : '') + '</div></td>' +
+        '<td>' + esc(it.source || '') + '<div class="muted">' + esc(it.overseasNo || it.tracking || '') + '</div></td>' +
+        (isHold ? '<td>' + esc(it.marginRate || '') + '</td><td>' + esc(it.reason) + '</td>' : '') +
+        '<td><button class="small" onclick="toggle(\'' + c.id + '\',\'' + encodeURIComponent(it.key) + '\')">' +
+          (it.dismissed ? '되돌리기' : '확인함') + '</button></td>' +
+        '</tr>';
+    }).join('');
+    var th = (isHold ? '<th>경과</th>' : '<th>문제</th>') + '<th>사업자</th><th>주문일</th><th>주문번호</th><th>상품</th><th>구매처 / 해외번호</th>' +
+      (isHold ? '<th>마진율</th><th>메모</th>' : '') + '<th></th>';
+    return head + '<div class="wrap"><table><thead><tr>' + th + '</tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+  }
+
+  function toggle(checkId, encKey) {
+    var key = decodeURIComponent(encKey);
+    var check = report.checks.filter(function (c) { return c.id === checkId; })[0];
+    var it = check.items.filter(function (i) { return i.key === key; })[0];
+    it.dismissed = !it.dismissed;
+    render();
+    google.script.run.setDismissed(key, it.dismissed);
+  }
+
+  document.getElementById('business').onchange = load;
+  document.getElementById('channel').onchange = load;
+  document.getElementById('period').onchange = load;
+  document.getElementById('showDismissed').onchange = function () { if (report) render(); };
+  load();
+</script>
+</body>
+</html>
