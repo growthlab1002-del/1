@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // 로컬 모드 서버: 대시보드를 http://localhost:4321 에서 열고, 저장·업로드·Aside 분석·수집을 이 PC에서 처리합니다.
-// 사용법: node collector/server.mjs [--port 4321] [--mock] [--aside-cmd "aside exec {prompt}"]
+// 사용법: node collector/server.mjs [--port 4321] [--mock] [--open] [--aside-cmd "aside exec {prompt}"]
 
+import { spawn, spawnSync } from "node:child_process";
 import http from "node:http";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -15,11 +16,12 @@ const PAGE = path.join(ROOT, "ad-reference-board", "index.html");
 const DATA = path.resolve(process.env.AD_BOARD_DATA || path.join(ROOT, "data"));
 const ASSETS = path.join(DATA, "assets");
 
-const opts = { port: 4321, mock: false, template: process.env.ASIDE_CMD || DEFAULT_ASIDE_CMD };
+const opts = { port: 4321, mock: false, open: false, template: process.env.ASIDE_CMD || DEFAULT_ASIDE_CMD };
 for (let i = 2; i < process.argv.length; i++) {
   const k = process.argv[i];
   if (k === "--port") opts.port = Number(process.argv[++i]);
   else if (k === "--mock") opts.mock = true;
+  else if (k === "--open") opts.open = true;
   else if (k === "--aside-cmd") opts.template = process.argv[++i];
   else { console.error(`알 수 없는 옵션: ${k}`); process.exit(1); }
 }
@@ -181,7 +183,23 @@ async function handle(req, res) {
 
 await load();
 http.createServer((req, res) => handle(req, res).catch((e) => send(res, e.status || 500, { error: e.status ? "bad_request" : "server_error", message: e.message })))
+  .on("error", (e) => {
+    if (e.code !== "EADDRINUSE") throw e;
+    console.error(`${opts.port}번 포트를 이미 쓰고 있습니다. 보드가 이미 실행 중일 수 있으니 브라우저로 http://localhost:${opts.port} 을 열어 보세요.`);
+    process.exit(1);
+  })
   .listen(opts.port, "127.0.0.1", () => {
     console.log(`광고 레퍼런스 보드 (로컬 모드) → http://localhost:${opts.port}`);
     console.log(`데이터 폴더: ${DATA}${opts.mock ? "\n--mock: Aside 대신 가짜 결과를 씁니다" : `\nAside 명령: ${opts.template}`}`);
+    if (!opts.mock) {
+      const bin = opts.template.trim().split(/\s+/)[0].replace(/^["']|["']$/g, "");
+      const found = spawnSync(process.platform === "win32" ? "where" : "which", [bin], { stdio: "ignore" }).status === 0;
+      if (!found) console.warn(`\n! '${bin}' 명령을 찾지 못했습니다. 화면은 열리지만 분석·수집 전에 Aside CLI를 설치하세요 (collector/README.md 참고).`);
+    }
+    if (opts.open) openBrowser(`http://localhost:${opts.port}`);
   });
+
+function openBrowser(url) {
+  const [cmd, args] = process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
+  try { spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref(); } catch {}
+}

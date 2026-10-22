@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 // 소스별 검색 URL과 Aside 에이전트에게 보낼 지시문.
 // kind: "image" = 광고 이미지 레퍼런스, "video" = 영상 구조·기획 레퍼런스
 
@@ -74,7 +76,7 @@ export function analysisPrompt(product, photoPath) {
   return [
     `당신은 AI로 제품 광고(AI 생성 이미지·영상)를 만드는 팀의 크리에이티브 디렉터입니다.`,
     photoPath
-      ? `광고할 제품 사진이 이 컴퓨터의 파일로 있습니다: ${photoPath}\n브라우저에서 file:// 주소로 이 파일을 열어 제품 종류, 용기·소재, 색, 질감, 브랜드 표기를 확인하세요. 파일을 열 수 없으면 아래 정보만으로 진행하세요.`
+      ? `광고할 제품 사진이 이 컴퓨터에 있습니다: ${pathToFileURL(photoPath).href}\n브라우저에서 이 주소를 열어 제품 종류, 용기·소재, 색, 질감, 브랜드 표기를 확인하세요. 파일을 열 수 없으면 아래 정보만으로 진행하세요.`
       : ``,
     `제품 정보:`,
     `- 제품명: ${p.name || "(사진 참고)"}`,

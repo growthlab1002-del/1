@@ -44,21 +44,53 @@ function commandFor(template, prompt) {
   return parts;
 }
 
-export function runAside(template, prompt, timeoutSec) {
+// Windows cmd.exe용 인자 이스케이프 (cross-spawn 방식). .cmd/.bat 실행 파일은 메타문자를 한 번 더 이스케이프해야 합니다.
+const CMD_META = /([()\][%!^"`<>&|;, *?])/g;
+export function cmdQuote(arg, doubleEscape = true) {
+  let a = String(arg).replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, "$1$1");
+  a = `"${a}"`.replace(CMD_META, "^$1");
+  return doubleEscape ? a.replace(CMD_META, "^$1") : a;
+}
+// cmd는 인자 안의 줄바꿈을 받지 못해 " / "로 바꿔 한 줄로 넘깁니다.
+export function cmdLine(cmd, args) {
+  return [cmd.replace(CMD_META, "^$1"), ...args.map((a) => cmdQuote(String(a).replace(/\r?\n/g, " / ")))].join(" ");
+}
+
+export function runAside(template, prompt, timeoutSec, { platform = process.platform, spawnFn = spawn } = {}) {
   const [cmd, ...args] = commandFor(template, prompt);
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+  const win = platform === "win32";
+  const attempt = (viaCmd) => new Promise((resolve, reject) => {
+    let child, done = false;
+    const finish = (fn, v) => { if (!done) { done = true; clearTimeout(timer); fn(v); } };
+    try {
+      if (viaCmd) {
+        const line = cmdLine(cmd, args);
+        if (line.length > 8000) throw new Error("지시문이 Windows 명령줄 길이 제한을 넘습니다. 브리프의 검색어나 설명을 줄여 주세요.");
+        child = spawnFn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `"${line}"`], { stdio: ["ignore", "pipe", "pipe"], windowsVerbatimArguments: true });
+      } else {
+        child = spawnFn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+      }
+    } catch (e) { return reject(e); }
     let out = "", err = "";
-    const timer = setTimeout(() => { child.kill("SIGTERM"); reject(new Error(`시간 초과(${timeoutSec}초)`)); }, timeoutSec * 1000);
+    const timer = setTimeout(() => {
+      if (win) spawnFn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore" }).on("error", () => {});
+      else child.kill("SIGTERM");
+      finish(reject, new Error(`시간 초과(${timeoutSec}초)`));
+    }, timeoutSec * 1000);
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (err += d));
-    child.on("error", (e) => { clearTimeout(timer); reject(e.code === "ENOENT" ? new Error(`'${cmd}' 명령을 찾을 수 없습니다. Aside CLI 설치와 PATH를 확인하세요.`) : e); });
+    child.on("error", (e) => finish(reject, e));
     child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code !== 0 && !out.trim()) reject(new Error(`Aside 종료 코드 ${code}: ${err.trim().slice(0, 400)}`));
-      else resolve(out);
+      // cmd.exe는 명령을 못 찾으면 9009로 끝납니다.
+      if (viaCmd && code === 9009) return finish(reject, Object.assign(new Error("not found"), { code: "ENOENT" }));
+      if (code !== 0 && !out.trim()) finish(reject, new Error(`Aside 종료 코드 ${code}: ${err.trim().slice(0, 400)}`));
+      else finish(resolve, out);
     });
   });
+  // Windows에서 aside가 .cmd 같은 스크립트면 셸 없이 실행되지 않아(ENOENT/EINVAL) cmd.exe로 다시 시도합니다.
+  return attempt(false)
+    .catch((e) => (win && (e.code === "ENOENT" || e.code === "EINVAL") ? attempt(true) : Promise.reject(e)))
+    .catch((e) => Promise.reject(e.code === "ENOENT" ? new Error(`'${cmd}' 명령을 찾을 수 없습니다. Aside CLI 설치와 PATH를 확인하세요.`) : e));
 }
 
 // 출력에서 JSON 객체를 찾아냅니다 (제품 분석 결과용).
