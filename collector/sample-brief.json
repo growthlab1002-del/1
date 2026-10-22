@@ -1,0 +1,19 @@
+{
+  "id": "sample",
+  "product": { "name": "그린티 수분 세럼", "description": "제주 녹차 추출물 진정 세럼, 투명 유리 스포이드 병", "target": "20~30대 민감성 피부", "price": "3만원대" },
+  "category": "뷰티", "subcategory": "스킨케어 세럼",
+  "keyVisual": "투명 유리병, 연두빛 액체, 물방울, 자연광",
+  "mood": ["clean", "fresh", "minimal"],
+  "targetAudience": "20~30대 민감성 피부 여성",
+  "adAngles": ["성분 클로즈업", "텍스처 시연", "자연 속 제품"],
+  "aiAdIdeas": ["녹차 잎 위 물방울과 병", "슬로모션 세럼 드롭"],
+  "competitorBrands": ["이니스프리", "라운드랩"],
+  "queries": {
+    "pinterest": ["serum bottle product photography water drops", "green tea skincare ad minimal"],
+    "tvcf": ["녹차 세럼 광고", "진정 스킨케어 광고"],
+    "sourcecreative": ["skincare serum commercial"],
+    "frameset": ["skincare product shot"],
+    "youtube": ["serum product commercial 15s"],
+    "vimeo": ["skincare commercial cinematic"]
+  }
+}

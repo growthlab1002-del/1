@@ -1,0 +1,178 @@
+#!/usr/bin/env node
+// 제품 브리프(JSON)를 받아 Aside CLI로 소스별 레퍼런스를 찾아 refs.json으로 저장합니다.
+// 사용법: node collector/collect.mjs --brief brief.json [--sources pinterest,tvcf] [--limit 8] [--queries 2] [--out refs.json] [--mock]
+
+import { spawn } from "node:child_process";
+import { readFile, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
+import { SOURCES, buildPrompt } from "./sources.mjs";
+
+function parseArgs(argv) {
+  const a = { limit: 8, queries: 2, out: "refs.json", timeout: 300, mock: false };
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    const next = () => argv[++i];
+    if (k === "--brief") a.brief = next();
+    else if (k === "--sources") a.sources = next().split(",").map((s) => s.trim()).filter(Boolean);
+    else if (k === "--limit") a.limit = Number(next());
+    else if (k === "--queries") a.queries = Number(next());
+    else if (k === "--out") a.out = next();
+    else if (k === "--timeout") a.timeout = Number(next());
+    else if (k === "--aside-cmd") a.asideCmd = next();
+    else if (k === "--mock") a.mock = true;
+    else if (k === "-h" || k === "--help") a.help = true;
+    else throw new Error(`알 수 없는 옵션: ${k}`);
+  }
+  return a;
+}
+
+const HELP = `사용법: node collector/collect.mjs --brief brief.json [옵션]
+  --sources   pinterest,tvcf,sourcecreative,frameset,youtube,vimeo (기본: 전체)
+  --limit     검색어당 가져올 개수 (기본 8)
+  --queries   소스당 사용할 검색어 수 (기본 2)
+  --out       결과 파일 (기본 refs.json)
+  --timeout   Aside 1회 호출 제한 시간(초, 기본 300)
+  --aside-cmd Aside 실행 명령 템플릿 (기본 "aside exec {prompt}", 환경변수 ASIDE_CMD도 가능)
+  --mock      Aside 없이 가짜 결과로 동작 확인`;
+
+// "aside exec {prompt}" 같은 템플릿을 [명령, 인자...]로 바꿉니다. {prompt}가 없으면 맨 뒤에 붙입니다.
+function commandFor(template, prompt) {
+  const parts = template.match(/"[^"]*"|'[^']*'|\S+/g).map((t) => t.replace(/^["']|["']$/g, ""));
+  const i = parts.indexOf("{prompt}");
+  if (i >= 0) parts[i] = prompt; else parts.push(prompt);
+  return parts;
+}
+
+function runAside(template, prompt, timeoutSec) {
+  const [cmd, ...args] = commandFor(template, prompt);
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let out = "", err = "";
+    const timer = setTimeout(() => { child.kill("SIGTERM"); reject(new Error(`시간 초과(${timeoutSec}초)`)); }, timeoutSec * 1000);
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (err += d));
+    child.on("error", (e) => { clearTimeout(timer); reject(e.code === "ENOENT" ? new Error(`'${cmd}' 명령을 찾을 수 없습니다. Aside CLI 설치와 PATH를 확인하세요.`) : e); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0 && !out.trim()) reject(new Error(`Aside 종료 코드 ${code}: ${err.trim().slice(0, 400)}`));
+      else resolve(out);
+    });
+  });
+}
+
+// 출력에서 JSON 배열을 찾아냅니다: ```json 블록 → 전체 → 첫 '[' ~ 마지막 ']' 순서.
+export function extractArray(text) {
+  const tries = [];
+  for (const m of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)) tries.push(m[1]);
+  tries.push(text);
+  const s = text.indexOf("["), e = text.lastIndexOf("]");
+  if (s >= 0 && e > s) tries.push(text.slice(s, e + 1));
+  for (const t of tries) {
+    try {
+      const v = JSON.parse(t.trim());
+      if (Array.isArray(v)) return v;
+      for (const k of ["results", "items", "data", "result"]) if (Array.isArray(v?.[k])) return v[k];
+    } catch {}
+  }
+  return null;
+}
+
+const str = (v, max = 500) => (typeof v === "string" ? v.trim().slice(0, max) : v == null ? "" : String(v).slice(0, max));
+function httpUrl(u) { try { const x = new URL(String(u)); return /^https?:$/.test(x.protocol) ? x.href : ""; } catch { return ""; } }
+const RATIOS = ["1:1", "4:5", "9:16", "16:9", "1.91:1", "2:3"];
+
+export function normalize(raw, { sourceKey, query, brief }) {
+  const s = SOURCES[sourceKey];
+  const url = httpUrl(raw.url || raw.link || raw.href);
+  if (!url) return null;
+  const rel = Math.round(Number(raw.relevance));
+  const scenes = Array.isArray(raw.scenes) ? raw.scenes.map((x) => str(x, 200)).filter(Boolean).slice(0, 12) : [];
+  return {
+    title: str(raw.title, 200) || "(제목 없음)",
+    url,
+    thumb: httpUrl(raw.image || raw.thumbnail || raw.thumb),
+    brand: str(raw.brand, 100),
+    industry: str(brief.category, 60),
+    platform: s.platform,
+    format: s.kind === "video" ? "video" : "image",
+    kind: s.kind === "video" ? "video-plan" : "image",
+    ratio: RATIOS.includes(raw.ratio) ? raw.ratio : (s.kind === "video" ? "16:9" : "기타"),
+    status: "collected",
+    hook: str(raw.hook, 300),
+    note: str(raw.note, 600),
+    tags: Array.isArray(raw.tags) ? [...new Set(raw.tags.map((t) => str(t, 30)).filter(Boolean))].slice(0, 10) : [],
+    scenes,
+    cta: str(raw.cta, 200),
+    duration: str(raw.duration, 20),
+    credits: str(raw.credits, 300),
+    relevance: rel >= 1 && rel <= 5 ? rel : null,
+    source: sourceKey,
+    query,
+    briefId: brief.id || null,
+    collectedAt: Date.now(),
+  };
+}
+
+function mockOutput(sourceKey, query, limit) {
+  const s = SOURCES[sourceKey];
+  const items = Array.from({ length: Math.min(limit, 3) }, (_, i) => ({
+    title: `${query} 샘플 ${i + 1}`,
+    url: `https://example.com/${sourceKey}/${encodeURIComponent(query)}/${i}`,
+    image: `https://picsum.photos/seed/${sourceKey}${i}/600/750`,
+    brand: "Sample Brand", ratio: s.kind === "video" ? "16:9" : "4:5",
+    hook: "제품 클로즈업으로 시작", note: "조명 톤 참고",
+    ...(s.kind === "video" ? { scenes: ["씬1: 제품 클로즈업", "씬2: 사용 장면", "씬3: 패키지 엔드컷"], cta: "지금 만나보세요", duration: "0:15" } : {}),
+    tags: ["mock"], relevance: 5 - i,
+  }));
+  // 중복 제거 확인용으로 첫 항목을 한 번 더 넣습니다.
+  return "작업을 완료했습니다.\n```json\n" + JSON.stringify([...items, items[0]], null, 2) + "\n```";
+}
+
+async function main() {
+  const a = parseArgs(process.argv.slice(2));
+  if (a.help || !a.brief) { console.log(HELP); process.exit(a.help ? 0 : 1); }
+  const brief = JSON.parse(await readFile(a.brief, "utf8"));
+  const template = a.asideCmd || process.env.ASIDE_CMD || "aside exec {prompt}";
+  const keys = (a.sources || Object.keys(SOURCES)).filter((k) => {
+    if (!SOURCES[k]) { console.warn(`! 모르는 소스 건너뜀: ${k}`); return false; }
+    return true;
+  });
+
+  let existing = [];
+  try { existing = JSON.parse(await readFile(a.out, "utf8")); if (!Array.isArray(existing)) existing = []; } catch {}
+  const seen = new Set(existing.map((r) => r.url));
+  const results = [...existing];
+  let added = 0;
+
+  for (const key of keys) {
+    const queries = (brief.queries?.[key] || []).filter(Boolean).slice(0, a.queries);
+    if (!queries.length) { console.warn(`! ${key}: 브리프에 검색어가 없어 건너뜀`); continue; }
+    for (const q of queries) {
+      process.stdout.write(`→ ${SOURCES[key].platform} "${q}" … `);
+      let out;
+      try {
+        out = a.mock ? mockOutput(key, q, a.limit) : await runAside(template, buildPrompt(key, q, brief, a.limit), a.timeout);
+      } catch (e) { console.log(`실패: ${e.message}`); continue; }
+      const arr = extractArray(out);
+      if (!arr) {
+        const f = `raw-${key}-${Date.now()}.txt`;
+        await writeFile(f, out);
+        console.log(`JSON을 찾지 못해 원문을 ${f}에 저장`);
+        continue;
+      }
+      let n = 0;
+      for (const raw of arr) {
+        const r = raw && typeof raw === "object" ? normalize(raw, { sourceKey: key, query: q, brief }) : null;
+        if (!r || seen.has(r.url)) continue;
+        seen.add(r.url); results.push(r); n++;
+      }
+      added += n;
+      console.log(`${n}개`);
+      await writeFile(a.out, JSON.stringify(results, null, 2));
+    }
+  }
+  await writeFile(a.out, JSON.stringify(results, null, 2));
+  console.log(`\n완료: 새 레퍼런스 ${added}개 (전체 ${results.length}개) → ${a.out}\n대시보드에서 "수집 결과 가져오기"로 이 파일을 올리세요.`);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch((e) => { console.error(e.message); process.exit(1); });
