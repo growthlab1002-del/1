@@ -69,16 +69,38 @@ def parse_frontmatter(text):
     return meta, text[m.end():]
 
 
-def build(src):
-    files = read_source(src)
-    # zip 안 최상위 폴더 이름(wadiz-skills-v4.1/ 등)을 떼어 냄
-    def strip_root(p):
-        for marker in (SKILL_DIR, GUIDE_DIR):
-            k = p.find(marker)
-            if k >= 0:
-                return p[k:]
-        return None
+def strip_root(p):
+    """zip 안 최상위 폴더 이름(wadiz-skills-v4.1/ 등)을 떼어 냄."""
+    for marker in (SKILL_DIR, GUIDE_DIR):
+        k = p.find(marker)
+        if k >= 0:
+            return p[k:]
+    return None
 
+
+def skill_files(files):
+    """{(스킬id, 폴더 안 경로): 텍스트} — 로컬 서버가 스크립트를 풀어 둘 때 씀."""
+    out = {}
+    for path, text in files.items():
+        rel = strip_root(path)
+        if rel and rel.startswith(SKILL_DIR):
+            parts = rel[len(SKILL_DIR):].split('/')
+            if len(parts) >= 2 and all(p not in ('', '.', '..') for p in parts):
+                out[(parts[0], '/'.join(parts[1:]))] = text
+    return out
+
+
+def build(src):
+    html, skills, guides = build_html(src)
+    os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    with open(OUT, 'w', encoding='utf-8') as f:
+        f.write(html)
+    print(f'스킬 {len(skills)}개, 작업지침 {len(guides)}개 → {OUT} ({len(html) // 1024} KB)')
+    return skills
+
+
+def build_html(src, files=None):
+    files = files if files is not None else read_source(src)
     skills, guides = {}, {}
     for path, text in sorted(files.items()):
         rel = strip_root(path)
@@ -118,11 +140,7 @@ def build(src):
     if '__SKILLS_JSON__' not in html:
         sys.exit('template.html 에 __SKILLS_JSON__ 자리가 없어요.')
     html = html.replace('__SKILLS_JSON__', data)
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    with open(OUT, 'w', encoding='utf-8') as f:
-        f.write(html)
-    print(f'스킬 {len(skills)}개, 작업지침 {len(guides)}개 → {OUT} ({len(html) // 1024} KB)')
-    return skills
+    return html, skills, guides
 
 
 if __name__ == '__main__':

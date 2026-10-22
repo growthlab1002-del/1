@@ -198,6 +198,8 @@ dialog::backdrop { background: rgb(10 12 16 / .45); }
 .media-list .pill.running { background: var(--warn-soft); color: var(--warn); }
 .media-list .pill.completed { background: var(--ok-soft); color: var(--ok); }
 .media-list .pill.failed { background: var(--bad-soft); color: var(--bad); }
+.preview-wrap { flex-basis: 100%; display: grid; gap: 4px; }
+.preview { max-width: min(100%, 360px); max-height: 360px; border-radius: 6px; border: 1px solid var(--line); background: var(--sunk); }
 .confirm { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; display: grid; gap: 8px; }
 .gen details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 14px; z-index: 20; max-width: calc(100vw - 32px); }
@@ -230,6 +232,8 @@ dialog::backdrop { background: rgb(10 12 16 / .45); }
 <script>
 'use strict';
 const DATA = JSON.parse(document.getElementById('skills-data').textContent);
+// 내 컴퓨터(serve.py)에서 열면 설정이 들어 있음. claude.ai 에서는 null
+const LOCAL = window.__SKILLBOARD_LOCAL__ || null;
 const SK = DATA.skills || {};
 const GUIDES = DATA.guides || {};
 
@@ -272,6 +276,8 @@ const NEED_OF = {
   'composite-person': 'H', 'composite-product': 'H', 'quote-builder': 'C', 'storyboard-deck': 'C', 'proposal-deck': 'C',
   'content-calendar': 'C', 'sns-marketing': 'C', 'outsource-sales': 'C', 'reference-analysis': 'F', 'video-to-shorts': 'F'
 };
+// 내 컴퓨터에서는 Claude Code 가 스크립트·파일을 직접 다루므로 "계산 도구" 제약이 없음
+const needOf = s => (LOCAL && NEED_OF[s] === 'C') ? null : NEED_OF[s];
 const PART_OF = {};
 PARTS.forEach(p => p.skills.forEach(s => { PART_OF[s] = p; }));
 // 팩에 있는데 분류에 없는 스킬은 "기타"로
@@ -485,13 +491,13 @@ function partCard(p) {
     <header><h3>${esc(p.name)}</h3><span class="mono muted">${p.skills.length}</span></header>
     <p class="muted small" style="margin:0 8px 6px">${esc(p.note)}</p>
     ${p.skills.filter(s => SK[s]).map(s => `<button class="skill-row" data-skill="${esc(s)}">
-      <span class="id">${esc(s)}</span>${NEED_OF[s] ? `<span class="need">${NEEDS[NEED_OF[s]][0]}</span>` : '<span></span>'}
+      <span class="id">${esc(s)}</span>${needOf(s) ? `<span class="need">${NEEDS[needOf(s)][0]}</span>` : '<span></span>'}
       <span class="lb">${esc(LABEL[s] || SK[s].desc.slice(0, 40))}</span></button>`).join('')}
   </section>`;
 }
 function openSkill(id) {
   const s = SK[id]; if (!s) return;
-  const need = NEED_OF[id];
+  const need = needOf(id);
   $('#skill-dlg-body').innerHTML = `
     <header><div><span class="mono muted">${esc(PART_OF[id]?.name || '')}</span><h2>${esc(id)}</h2><p>${esc(LABEL[id] || '')}</p></div>
       <button class="ghost" id="dlg-close" aria-label="닫기">닫기</button></header>
@@ -602,7 +608,7 @@ function saveStep(i) { return Store.putStep(S.run.id, i, S.steps[i]); }
 
 function renderRun() {
   const r = S.run, st = r.flow.steps[S.cur], step = S.steps[S.cur];
-  const need = NEED_OF[st.skill];
+  const need = needOf(st.skill);
   const nextTodo = S.steps.findIndex((s, i) => i > S.cur && s.status !== 'done' && s.status !== 'skipped');
   const remaining = S.steps.some(s => s.status !== 'done' && s.status !== 'skipped');
   const checks = parseChecks(lastAssistant(step));
@@ -633,6 +639,7 @@ function renderRun() {
           <span class="mono muted">STEP ${pad(S.cur + 1)} · ${esc(PART_OF[st.skill]?.name || '')}</span>
           <h3>${esc(st.title)} <span class="muted small mono">${esc(st.skill)}${st.extra ? ' + ' + esc(st.extra.join(', ')) : ''}</span></h3>
           ${need ? `<p class="muted small">${esc(NEEDS[need][1])}</p>` : ''}
+          ${LOCAL ? `<p class="muted small">작업 폴더: <span class="mono">${esc(LOCAL.home + LOCAL.sep + 'projects' + LOCAL.sep + r.id)}</span> · 만든 파일은 outputs, 생성 결과는 media, 내보내기는 exports 폴더에 있어요.</p>` : ''}
         </div>
         <div class="msgs" id="msgs">${renderMsgs(step)}</div>
         <div class="composer">
@@ -747,7 +754,14 @@ function instruction(i, budget) {
   const r = S.run, st = r.flow.steps[i], s = SK[st.skill];
   const parts = [];
   parts.push('너는 아래 [스킬] 문서를 작업 설명서로 삼아 일하는 제작 파트너다. 스킬 문서의 절차·질문·멈추는 곳·금지 사항을 그대로 따른다. 답은 한국어로, 쉽게 풀어서, 제목·짧은 줄·표로 나눠 쓴다.');
-  parts.push('\n## 실행 환경 (꼭 지킬 것)\n이 대화는 웹 대시보드에서 돌아간다. 너는 파일 만들기, 코드(파이썬) 실행, 생성 도구·노션 같은 연결 호출, 웹 검색, 영상 파일 열기를 할 수 없다. 사용자가 첨부한 이미지와 글만 볼 수 있다.\n- 스킬이 생성 도구를 쓰라고 하면 "연결 없음 / 프롬프트 모드" 경로를 따라 붙여 쓸 프롬프트까지만 낸다. 실제 생성은 대시보드 생성 패널이 한다(아래 참고).\n- 스크립트 계산·검산이 필요하면 직접 계산해 표로 보여 주고 "스크립트 검산 못 함"이라고 적는다.\n- 파일(.md·.csv·.xlsx·.pptx)을 만들라는 곳에서는 그 내용을 마크다운(표·코드 블록)으로 답에 낸다.\n- "스킬을 호출하라"는 지시는 이 문서를 따르는 것으로 갈음한다.');
+  if (LOCAL) parts.push('\n## 실행 환경 (꼭 지킬 것)\n이 대화는 사용자 컴퓨터의 Claude Code 에서 돌아간다. 지금 작업 폴더가 이 프로젝트 폴더다. 파일 읽기·쓰기(Read·Write·Edit)와 python3 실행을 할 수 있다. 웹 검색과 생성 도구·노션 같은 연결 호출은 하지 않는다.\n'
+    + '- 스킬의 scripts/ 와 references/ 는 `' + LOCAL.skills + LOCAL.sep + st.skill + '` 폴더에 있다. 스킬이 스크립트로 계산·검산·파일 생성을 하라고 하면 그대로 실행한다. 파이썬 라이브러리(openpyxl·python-pptx·Pillow)가 없으면 pip install 을 한 번 시도하고, 그래도 안 되면 표로 대신하고 그 사실을 적는다.\n'
+    + '- 스킬이 만들라는 파일(.md·.csv·.xlsx·.pptx 등)은 outputs/ 폴더에 만들고, 답에 파일 이름과 핵심 내용을 함께 적는다.\n'
+    + '- 영상 파일은 다루지 않는다(ffmpeg 실행 안 함). 자막(SRT)·캡처·설명으로 진행한다.\n'
+    + '- 이미지·영상 생성은 직접 하지 않는다. 대시보드 생성 패널이 한다(아래 참고). 생성 도구를 쓰라는 단계는 붙여 쓸 프롬프트까지만 낸다.\n'
+    + '- 첨부 이미지가 있으면 메시지에 적힌 inputs/ 경로의 파일을 Read 로 열어 본다. 이 프로젝트 폴더 밖의 파일은 고치지 않는다.\n'
+    + '- "스킬을 호출하라"는 지시는 이 문서를 따르는 것으로 갈음한다.');
+  else parts.push('\n## 실행 환경 (꼭 지킬 것)\n이 대화는 웹 대시보드에서 돌아간다. 너는 파일 만들기, 코드(파이썬) 실행, 생성 도구·노션 같은 연결 호출, 웹 검색, 영상 파일 열기를 할 수 없다. 사용자가 첨부한 이미지와 글만 볼 수 있다.\n- 스킬이 생성 도구를 쓰라고 하면 "연결 없음 / 프롬프트 모드" 경로를 따라 붙여 쓸 프롬프트까지만 낸다. 실제 생성은 대시보드 생성 패널이 한다(아래 참고).\n- 스크립트 계산·검산이 필요하면 직접 계산해 표로 보여 주고 "스크립트 검산 못 함"이라고 적는다.\n- 파일(.md·.csv·.xlsx·.pptx)을 만들라는 곳에서는 그 내용을 마크다운(표·코드 블록)으로 답에 낸다.\n- "스킬을 호출하라"는 지시는 이 문서를 따르는 것으로 갈음한다.');
 
   const kind = genKind(st);
   if (kind.img || kind.vid) {
@@ -833,7 +847,9 @@ async function sendTurn(text, opts = {}) {
     const res = await S.sample(turnsFor(i), {
       signal: S.ctl.signal, cache: false, modelTier: S.run.tier || 'default',
       ...(images.length ? { images } : {}),
-      onText: ({ text: t }) => { S.live = t; const el = liveEl(); if (el && S.cur === i) el.innerHTML = md(t); }
+      onText: ({ text: t }) => { S.live = t; const el = liveEl(); if (el && S.cur === i) el.innerHTML = md(t); },
+      // 내 컴퓨터에서만 옴: Claude Code 가 파일을 만들거나 스크립트를 돌리는 중
+      onActivity: a => { const el = liveEl(); if (el && S.cur === i && !S.live) el.innerHTML = '<span class="thinking">' + esc(a) + '</span>'; }
     });
     step.messages.push({ role: 'assistant', content: res.text + (res.truncated ? '\n\n> (답이 길어 중간에 끊겼어요. "이어서"라고 보내면 계속해요.)' : '') });
     const h = parseHandoff(res.text); if (h) step.handoff = h;
@@ -1031,7 +1047,15 @@ function mediaItems(step, scene) {
     <span>${m.kind === 'image' ? '이미지' : '영상'} · ${esc(m.model)}${m.credits ? ' · ' + m.credits + '크레딧' : ''}</span>
     ${m.url ? `<a href="${esc(m.url)}" target="_blank" rel="noopener">열기 ↗</a>` : ''}
     ${m.error ? `<span class="err">${esc(m.error)}</span>` : ''}
-    <button class="ghost" data-rm-media="${m.id}">목록에서 빼기</button></li>`).join('');
+    <button class="ghost" data-rm-media="${m.id}">목록에서 빼기</button>
+    ${LOCAL && m.url ? localPreview(m) : ''}</li>`).join('');
+}
+// 내 컴퓨터에서는 보안 규칙 제약이 없어 미리보기를 바로 보여 줌
+function localPreview(m) {
+  const src = m.localPath ? localSrc(m.localPath) : m.url;
+  const media = m.kind === 'image' ? `<img class="preview" src="${esc(src)}" alt="씬 ${esc(m.scene)} 이미지" loading="lazy">`
+    : `<video class="preview" src="${esc(src)}" controls preload="metadata"></video>`;
+  return `<div class="preview-wrap">${media}<span class="muted small">${m.localPath ? '저장됨: ' + esc(m.localPath) : esc(m.saveError || '내 컴퓨터에 저장하는 중…')}</span></div>`;
 }
 function confirmBox() {
   const c = S.confirm; if (!c) return '';
@@ -1215,6 +1239,18 @@ async function submitVideos(ks) {
   pump();
 }
 
+/* 내 컴퓨터에서는 완성된 이미지·영상을 프로젝트 폴더 media/ 에 내려받아 둠 */
+async function saveLocal(m, runId) {
+  if (!LOCAL || !m.url || m.localPath) return;
+  try {
+    const name = '씬' + m.scene + '_' + (m.kind === 'image' ? '이미지' : '영상') + '_' + m.id;
+    const j = await LOCAL.api('/api/fetch-media', { project: runId, url: m.url, name });
+    m.localPath = j.path;
+    const f = findMedia(m.id); if (f && S.run && S.run.id === runId) { await saveStep(f.k); refreshMediaLists(); }
+  } catch (e) { m.saveError = '내 컴퓨터에 저장하지 못했어요'; }
+}
+const localSrc = p => '/media?token=' + encodeURIComponent(LOCAL.token) + '&path=' + encodeURIComponent(p);
+
 /* 만드는 중인 항목을 완료될 때까지 확인 (읽기만) */
 async function pump() {
   if (S.pumping || !MCP.api || !S.run) return;
@@ -1233,7 +1269,7 @@ async function pump() {
           (p?.results || []).forEach(r => {
             const x = imgs.find(y => y.m.ref === r.identifier); if (!x) return;
             const st = String(r.status || '');
-            if (DONE_RE.test(st)) { x.m.status = 'completed'; x.m.url = r.results?.url || firstUrl(r, /\.(png|jpe?g|webp)/i); touched.add(x.k); }
+            if (DONE_RE.test(st)) { x.m.status = 'completed'; x.m.url = r.results?.url || firstUrl(r, /\.(png|jpe?g|webp)/i); touched.add(x.k); saveLocal(x.m, run.id); }
             else if (FAIL_RE.test(st)) { x.m.status = 'failed'; x.m.error = String(r.error || r.message || '매그니픽에서 생성하지 못했어요.').slice(0, 200); touched.add(x.k); }
           });
         } catch (e) { genError(errText(e, SRV_M)); if (!e?.retryable) break; }
@@ -1251,7 +1287,7 @@ async function pump() {
               st = (seg.match(/status["']?\s*[:=]\s*["']?(\w+)/i) || [])[1] || '';
               url = (seg.match(/https?:\/\/[^\s"')\]]+/) || [])[0] || '';
             }
-            if (DONE_RE.test(st) || (url && !st)) { x.m.status = 'completed'; x.m.url = url; touched.add(x.k); }
+            if (DONE_RE.test(st) || (url && !st)) { x.m.status = 'completed'; x.m.url = url; touched.add(x.k); saveLocal(x.m, run.id); }
             else if (FAIL_RE.test(st)) { x.m.status = 'failed'; x.m.error = String(err || '힉스필드에서 생성하지 못했어요.').slice(0, 200); touched.add(x.k); }
           });
         } catch (e) { genError(errText(e, SRV_H)); if (!e?.retryable) break; }
@@ -1280,7 +1316,7 @@ async function exportRun() {
   const text = runMarkdown();
   const dl = await use('downloads');
   if (dl) {
-    try { await dl.save({ filename: S.run.name.replace(/[\\/:*?"<>|]/g, '_') + '.md', data: text }); toast('파일을 저장했어요'); return; }
+    try { const r = await dl.save({ filename: S.run.name.replace(/[\\/:*?"<>|]/g, '_') + '.md', data: text }); toast(r && r.path ? '저장했어요: ' + r.path : '파일을 저장했어요'); return; }
     catch (e) { if (e?.code === 'cancelled' || e?.code === 'declined') return; }
   }
   copyText(text);
@@ -1298,14 +1334,16 @@ $('#nav-new').onclick = () => { if (!S.busy) showNew(draft.flow); };
 renderHome();
 (async () => {
   await Store.init();
-  $('#store-note').textContent = { db: '· claude.ai 계정에 저장', local: '· 이 브라우저에 저장', memory: '· 저장 안 됨 (창을 닫으면 사라져요)' }[Store.mode];
+  $('#store-note').textContent = LOCAL ? '· 내 컴퓨터 · Claude Code · ' + LOCAL.home
+    : { db: '· claude.ai 계정에 저장', local: '· 이 브라우저에 저장', memory: '· 저장 안 됨 (창을 닫으면 사라져요)' }[Store.mode];
+  if (LOCAL && !LOCAL.claude) $('#sample-notice').textContent = 'Claude Code(claude)를 찾지 못했어요. 설치하고 로그인한 뒤 serve.py 를 다시 실행해 주세요. 그 전까지는 프롬프트 복사만 쓸 수 있어요.';
   try { S.metas = await Store.list(); } catch (e) { S.metas = []; toast('저장된 프로젝트를 불러오지 못했어요'); }
   if (!$('#view-home').hidden) renderHome();
   MCP.api = await use('mcp');
   const sample = await use('sample');
   S.sample = sample;
   if (sample) { try { const lim = await sample.limits(); S.imgLimits = lim.images || null; } catch (e) { S.imgLimits = null; } }
-  $('#sample-notice').hidden = !!sample;
+  $('#sample-notice').hidden = !!sample && !(LOCAL && !LOCAL.claude);
   if (S.run && !$('#view-run').hidden) renderRun();
 })();
 </script>
